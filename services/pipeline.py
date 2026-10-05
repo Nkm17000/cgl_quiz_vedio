@@ -4,7 +4,7 @@ from pathlib import Path
 
 from config import INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_BUSINESS_ACCOUNT_ID, OUTPUT_DIR, PAGE_URL
 from services.instagram_service import publish_video_to_instagram
-from services.quiz_service import QUIZ_SIZE, commit_quiz_counter, fetch_quizzes
+from services.quiz_service import QUIZ_SIZE, commit_quiz_counter, fetch_quizzes, get_manual_quiz
 from services.video_service import create_video, generate_images
 from utils.file_utils import cleanup
 from utils.memory import load_memory, save_memory
@@ -15,6 +15,7 @@ class InstagramPublishingLimitError(RuntimeError):
 
 
 IG_COOLDOWN_KEY = "instagram_upload_blocked_until"
+
 
 
 def _instagram_upload_blocked() -> bool:
@@ -43,9 +44,8 @@ def _set_instagram_cooldown(hours: int = 24) -> None:
     save_memory(memory)
     print(f"⏸️ Instagram publishing limit reached. Cooldown saved until {blocked_until.strftime('%Y-%m-%d %H:%M:%S UTC')}.")
 
-
 def _caption(subject: str) -> str:
-    return f"""📊 {subject} Exam Focus
+    return f"""📊 ALL Subject Exam Focus
 
 📚 Daily practice for serious aspirants
 
@@ -70,18 +70,15 @@ def _output_path(item) -> Path:
 
 def _generate_one(item):
     quiz = item["questions"]
-    if len(quiz) < QUIZ_SIZE:
+    if len(quiz) != QUIZ_SIZE:
         raise RuntimeError(
-            f"{item['source_file']} quiz must contain at least {QUIZ_SIZE} questions; "
+            f"{item['source_file']} quiz must contain exactly {QUIZ_SIZE} questions; "
             f"got {len(quiz)}"
         )
 
     print("\n" + "=" * 80)
-    print(f"🎯 Generating Instagram Reel: {QUIZ_SIZE}-question quiz")
-    print(f"📊 Subject: {item['subject']}")
-    print(f"📊 Source: {item['source_file']}")
-    print(f"📍 Starting question index: {item['start_question_index']}")
-    print(f"🔢 Quiz number: {item['quiz_number']}")
+    print(f"🎯 Generating Instagram Reel: {QUIZ_SIZE}-question mixed quiz")
+    print(f"📊 Source: {item['source_file']} | counter: {item['counter']}")
     print("=" * 80)
 
     images = []
@@ -112,19 +109,15 @@ def _generate_one(item):
             )
         print(f"✅ Instagram published successfully: {result}")
 
-        new_counter = commit_quiz_counter(
-            item["source_file"], QUIZ_SIZE, subject=item["subject"]
-        )
+        new_counter = commit_quiz_counter(item["source_file"], QUIZ_SIZE)
         memory = load_memory()
         last_run = memory.setdefault("last_run", {})
         last_run[item["source_file"]] = {
             "subject": item["subject"],
             "quiz_number": item["quiz_number"],
             "source_counter_after": new_counter,
-            "next_question_index": new_counter,
             "platform": "instagram",
             "questions": QUIZ_SIZE,
-            "start_question_index": item["start_question_index"],
         }
         save_memory(memory)
         return str(output_video)
@@ -144,26 +137,20 @@ def run_pipeline():
         raise RuntimeError("No quizzes available")
 
     event = os.getenv("GITHUB_EVENT_NAME", "").strip().lower()
-    is_manual_or_push = event in {"workflow_dispatch", "push", ""}
+    is_manual_run = event in {"workflow_dispatch", "push", ""}
+    jobs_to_process = get_manual_quiz(quiz_jobs) if is_manual_run else quiz_jobs
 
-    # Manual runs, pushes, and scheduled runs all process every source.
-    # With the current 8 JSON sources this produces up to 8 videos per run.
-    jobs_to_process = quiz_jobs
-
-    if is_manual_or_push:
-        print(
-            f"🖐️ Manual/push run: generating ALL subject/source videos "
-            f"({len(jobs_to_process)} total, expected around 8)."
-        )
+    if is_manual_run:
+        print(f"🖐️ Manual/push run: generating {len(jobs_to_process)} Instagram videos (ALL SUBJECTS).")
     else:
-        print(
-            f"🗓️ Scheduled run: generating {len(jobs_to_process)} "
-            "Instagram videos (one per subject/source)."
-        )
+        print(f"🗓️ Scheduled run: generating {len(jobs_to_process)} Instagram videos (one per subject/source).")
+
+    print("🔒 Instagram publishing is strictly sequential: finish one Reel before starting the next.")
 
     completed = 0
     failed = 0
-    for item in jobs_to_process:
+    for position, item in enumerate(jobs_to_process, start=1):
+        print(f"\n🔢 Instagram video {position}/{len(jobs_to_process)}: {item['subject']}")
         try:
             _generate_one(item)
             completed += 1
@@ -174,11 +161,9 @@ def run_pipeline():
             break
         except Exception as exc:
             failed += 1
-            print(
-                f"❌ Failed {item['subject']} quiz {item['quiz_number']} "
-                f"from {item['source_file']}: {exc}"
-            )
-            continue
+            print(f"❌ Failed {item['subject']} quiz {item['quiz_number']} from {item['source_file']}: {exc}")
+            # Continue to the next subject so one bad source does not block the
+            # other scheduled subject videos.
 
     print("=" * 80)
     print(f"✅ Instagram completed: {completed}/{len(jobs_to_process)}")

@@ -1,4 +1,6 @@
 import json
+import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -11,6 +13,10 @@ from config import (
 )
 
 MAX_REEL_BYTES = 1_000 * 1024 * 1024
+INSTAGRAM_UPLOAD_ATTEMPTS = 3
+INSTAGRAM_RETRY_DELAY_SECONDS = 15
+INSTAGRAM_PROCESSING_TIMEOUT_SECONDS = 900
+INSTAGRAM_PROCESSING_POLL_SECONDS = 10
 GRAPH_BASE = f"https://graph.facebook.com/{META_GRAPH_VERSION}"
 
 # Meta returns this error when the Instagram Content Publishing API quota has
@@ -313,33 +319,131 @@ def _publish_container(container_id):
     return result
 
 
+def _run_ffmpeg(command):
+    print("▶", " ".join(str(x) for x in command))
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            "FFmpeg failed while preparing the Instagram video: "
+            f"{result.stderr[-4000:]}"
+        )
+
+
+def _normalize_video_for_instagram(video_path):
+    """Create a conservative Instagram-compatible MP4 before every upload."""
+    source = Path(video_path)
+    if not source.is_file():
+        raise FileNotFoundError(f"Instagram video not found: {source}")
+
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        raise RuntimeError("FFmpeg and ffprobe are required for Instagram upload normalization.")
+
+    normalized = source.with_name(f"{source.stem}_instagram_normalized.mp4")
+    print("🎞️ Normalizing video for Instagram upload...")
+
+    _run_ffmpeg([
+        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
+        "-i", str(source),
+        "-map", "0:v:0",
+        "-map", "0:a:0?",
+        "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,"
+                "pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+        "-r", "30",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-profile:v", "high",
+        "-level", "4.0",
+        "-pix_fmt", "yuv420p",
+        "-crf", "23",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-ar", "44100",
+        "-ac", "2",
+        "-movflags", "+faststart",
+        str(normalized),
+    ])
+
+    # Validate the actual resulting streams before giving the file to Meta.
+    probe = subprocess.run([
+        ffprobe, "-v", "error", "-show_streams", "-show_format",
+        "-of", "json", str(normalized)
+    ], check=True, capture_output=True, text=True)
+    data = json.loads(probe.stdout)
+    streams = data.get("streams", [])
+    video = next((x for x in streams if x.get("codec_type") == "video"), None)
+    audio = next((x for x in streams if x.get("codec_type") == "audio"), None)
+    if not video:
+        raise RuntimeError("Normalized Instagram video has no video stream.")
+    if video.get("codec_name") != "h264" or video.get("pix_fmt") != "yuv420p":
+        raise RuntimeError(f"Unexpected normalized video stream: {video}")
+    if audio and audio.get("codec_name") != "aac":
+        raise RuntimeError(f"Unexpected normalized audio stream: {audio}")
+
+    size = normalized.stat().st_size
+    if size <= 0 or size > MAX_REEL_BYTES:
+        raise RuntimeError(f"Normalized Instagram video has invalid size: {size} bytes")
+
+    print(
+        f"✅ Instagram video ready: {video.get('width')}x{video.get('height')} "
+        f"H.264/{video.get('pix_fmt')} / "
+        f"{'AAC' if audio else 'no audio'} / {size / 1024 / 1024:.1f} MB"
+    )
+    return normalized
+
+
 def publish_video_to_instagram(video_path, caption):
     """
-    Upload one local MP4 as a Reel and publish it.
+    Publish exactly ONE Reel, synchronously.
 
-    Returns:
-      dict  -> successfully published
-      None  -> Meta Content Publishing quota is currently exhausted
+    The caller must wait for this function to return before starting another
+    video. Each retry creates a fresh Meta container; a failed container is
+    never reused.
     """
     _require_config()
     _validate_account()
 
-    # Avoid creating another media container when Meta already reports that
-    # the account has exhausted its publishing allowance.
-    if _check_publishing_limit():
-        print(
-            "⏭️ Skipping Instagram publish because the Content Publishing "
-            "limit is currently exhausted."
-        )
-        return None
+    normalized_path = _normalize_video_for_instagram(video_path)
+    try:
+        for attempt in range(1, INSTAGRAM_UPLOAD_ATTEMPTS + 1):
+            print(
+                f"\n📸 Instagram upload {attempt}/{INSTAGRAM_UPLOAD_ATTEMPTS} "
+                f"(ONE VIDEO AT A TIME)"
+            )
 
-    container_id, upload_uri = _create_resumable_container(caption)
+            if _check_publishing_limit():
+                print("⏭️ Instagram publishing limit is exhausted.")
+                return None
 
-    # The POST above can be the authoritative source of the limit status when
-    # the optional preflight endpoint is unavailable.
-    if not container_id or not upload_uri:
-        return None
+            container_id, upload_uri = _create_resumable_container(caption)
+            if not container_id or not upload_uri:
+                return None
 
-    _upload_video(upload_uri, video_path)
-    _wait_until_ready(container_id)
-    return _publish_container(container_id)
+            try:
+                _upload_video(upload_uri, normalized_path)
+                _wait_until_ready(
+                    container_id,
+                    timeout_seconds=INSTAGRAM_PROCESSING_TIMEOUT_SECONDS,
+                    poll_seconds=INSTAGRAM_PROCESSING_POLL_SECONDS,
+                )
+                result = _publish_container(container_id)
+                print("✅ Current video fully uploaded, processed and published.")
+                return result
+            except Exception as exc:
+                print(
+                    f"❌ Instagram attempt {attempt}/{INSTAGRAM_UPLOAD_ATTEMPTS} failed: {exc}"
+                )
+                if attempt >= INSTAGRAM_UPLOAD_ATTEMPTS:
+                    raise
+                print(
+                    f"🔄 Waiting {INSTAGRAM_RETRY_DELAY_SECONDS}s before retrying "
+                    "with a NEW Instagram container..."
+                )
+                time.sleep(INSTAGRAM_RETRY_DELAY_SECONDS)
+
+        raise RuntimeError("Instagram upload failed after all retry attempts.")
+    finally:
+        if normalized_path != Path(video_path):
+            normalized_path.unlink(missing_ok=True)
+
