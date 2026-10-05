@@ -1,15 +1,15 @@
 {
   "version": 3,
   "counters": {
-    "smart_learning_lab_50000_mixed_questions.json": 5
+    "smart_learning_lab_50000_mixed_questions.json": 15
   },
   "last_run": {
     "smart_learning_lab_50000_mixed_questions.json": {
       "subject": "ALL SUBJECTS",
       "quiz_number": 1,
-      "source_counter_after": 5,
+      "source_counter_after": 15,
       "platform": "instagram",
-      "questions": 5
+      "questions": 10
     }
   }
 }
