@@ -4,14 +4,13 @@ from pathlib import Path
 # Keep history anchored to the project directory rather than the process cwd.
 BASE_DIR = Path(__file__).resolve().parents[1]
 MEMORY_FILE = BASE_DIR / "data" / "history" / "history.json"
-MEMORY_VERSION = 4
+MEMORY_VERSION = 3
 
 
 def _default_memory():
     return {
         "version": MEMORY_VERSION,
         "counters": {},
-        "tracks": {},
         "last_run": {},
     }
 
@@ -29,9 +28,6 @@ def _normalize_memory(data):
             str(key): max(0, int(value or 0))
             for key, value in counters.items()
         }
-        tracks = data.get("tracks")
-        if isinstance(tracks, dict):
-            normalized["tracks"] = tracks
         last_run = data.get("last_run")
         if isinstance(last_run, dict):
             normalized["last_run"] = last_run

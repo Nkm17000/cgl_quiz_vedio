@@ -1,23 +1,13 @@
 # Smart Learning Lab — Instagram Quiz Reel Generator
 
-Instagram-only quiz Reel generation pipeline for Smart Learning Lab.
-
-## Current test scope
-
-This version intentionally runs **one mixed quiz of exactly 5 questions per workflow run**.
-It uses only:
-
-`assets/quiz_data/smart_learning_lab_50000_mixed_questions.json`
-
-Questions are selected from a persistent source counter and shuffled inside the 5-question quiz.
-The counter advances only after the Instagram Reel is successfully published.
+Generates and publishes exactly **one Instagram Reel per workflow run**, containing exactly **10 questions**.
 
 ## Pipeline
 
 ```text
 Mixed JSON question bank
         ↓
-5-question selector
+10-question selector
         ↓
 Shuffle
         ↓
@@ -27,16 +17,31 @@ TTS narration
         ↓
 FFmpeg MP4
         ↓
-720x1280 Reel validation
+Temporary public GitHub Release asset
         ↓
-Instagram resumable Reel upload
+Instagram Graph API video_url
         ↓
 Instagram processing check
         ↓
-Instagram publish
+Instagram media_publish
         ↓
 Commit source counter
 ```
+
+## Instagram upload implementation
+
+The Instagram publishing flow now follows the working DIVINE_INDIA implementation:
+
+1. Generate the local MP4.
+2. Upload it to a temporary public GitHub Release.
+3. Build the public release download URL.
+4. Create an Instagram `REELS` media container using `video_url`.
+5. Wait until Meta reports `FINISHED`.
+6. Call `media_publish`.
+7. Delete the temporary GitHub Release.
+8. Commit the question counter only after successful publication.
+
+The old direct/resumable binary Instagram upload has been removed.
 
 ## GitHub Secrets
 
@@ -49,17 +54,22 @@ Optional:
 
 - `PAGE_URL`
 
-The workflow uses `META_GRAPH_VERSION=v23.0`.
+The repository must be **public** because Instagram needs to download the MP4 from the public GitHub Release URL.
 
-## Important Instagram validation fix
+## Run frequency
 
-The account preflight requests only `id,username`.
-It does **not** request `account_type`, because that field can produce Meta Graph API error `#100` for this account endpoint.
+The workflow supports:
 
-## Schedule
+- Manual `workflow_dispatch`
+- Push to `main`
+- Scheduled runs at 02:00, 08:00, 14:00 and 20:00 UTC
 
-The workflow runs at 02:00, 08:00, 14:00 and 20:00 UTC and also supports manual runs and pushes to `main`.
+Every run generates **one video with exactly 10 questions**.
 
-## Old Facebook code
+## Local test
 
-Facebook publishing is no longer part of the active pipeline. Delete `services/facebook_service.py` from the repository if it is still present from the previous version.
+```bash
+python app.py
+```
+
+For local Instagram publishing, set `PUBLIC_VIDEO_URL` to a publicly reachable MP4 URL and run through the normal pipeline, or use the workflow's GitHub Release flow.

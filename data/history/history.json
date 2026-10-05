@@ -1,103 +1,13 @@
 {
-  "version": 4,
+  "version": 3,
   "counters": {
-    "smart_learning_lab_50000_mixed_questions.json": 0,
-    "smart_learning_lab_english_grammar_10000_questions_reshuffled.json": 5,
-    "smart_learning_lab_general_science_10000_questions_reshuffled.json": 0,
-    "smart_learning_lab_math_10000_questions_reshuffled.json": 0,
-    "smart_learning_lab_reasoning_10000_questions_reshuffled.json": 0,
-    "smart_learning_lab_gk_10000_questions_reshuffled.json": 0
-  },
-  "tracks": {
-    "smart_learning_lab_50000_mixed_questions.json": {
-      "subject": "ALL SUBJECTS",
-      "next_question_index": 0,
-      "total_questions": 50000,
-      "questions_per_quiz": 10
-    },
-    "smart_learning_lab_english_grammar_10000_questions_reshuffled.json": {
-      "subject": "ENGLISH",
-      "next_question_index": 5,
-      "total_questions": 10000,
-      "questions_per_quiz": 10
-    },
-    "smart_learning_lab_general_science_10000_questions_reshuffled.json": {
-      "subject": "GENERAL SCIENCE",
-      "next_question_index": 0,
-      "total_questions": 10000,
-      "questions_per_quiz": 10
-    },
-    "smart_learning_lab_math_10000_questions_reshuffled.json": {
-      "subject": "MATH",
-      "next_question_index": 0,
-      "total_questions": 10000,
-      "questions_per_quiz": 10
-    },
-    "smart_learning_lab_reasoning_10000_questions_reshuffled.json": {
-      "subject": "REASONING",
-      "next_question_index": 0,
-      "total_questions": 10000,
-      "questions_per_quiz": 10
-    },
-    "smart_learning_lab_gk_10000_questions_reshuffled.json": {
-      "subject": "GK",
-      "next_question_index": 0,
-      "total_questions": 10000,
-      "questions_per_quiz": 10
-    },
-    "rajasthan_gk_10000_bilingual_ssc_cgl_reshuffled.json": {
-      "subject": "RAJASTHAN GK",
-      "next_question_index": 0,
-      "total_questions": 10000,
-      "questions_per_quiz": 10
-    },
-    "computer_science_10000_bilingual_ssc_cgl_reshuffled.json": {
-      "subject": "COMPUTER SCIENCE",
-      "next_question_index": 0,
-      "total_questions": 10000,
-      "questions_per_quiz": 10
-    }
+    "smart_learning_lab_50000_mixed_questions.json": 5
   },
   "last_run": {
     "smart_learning_lab_50000_mixed_questions.json": {
       "subject": "ALL SUBJECTS",
       "quiz_number": 1,
-      "source_counter_after": 0,
-      "platform": "instagram",
-      "questions": 5
-    },
-    "smart_learning_lab_english_grammar_10000_questions_reshuffled.json": {
-      "subject": "ENGLISH",
-      "quiz_number": 1,
       "source_counter_after": 5,
-      "platform": "instagram",
-      "questions": 5
-    },
-    "smart_learning_lab_general_science_10000_questions_reshuffled.json": {
-      "subject": "GENERAL SCIENCE",
-      "quiz_number": 1,
-      "source_counter_after": 0,
-      "platform": "instagram",
-      "questions": 5
-    },
-    "smart_learning_lab_math_10000_questions_reshuffled.json": {
-      "subject": "MATH",
-      "quiz_number": 1,
-      "source_counter_after": 0,
-      "platform": "instagram",
-      "questions": 5
-    },
-    "smart_learning_lab_reasoning_10000_questions_reshuffled.json": {
-      "subject": "REASONING",
-      "quiz_number": 1,
-      "source_counter_after": 0,
-      "platform": "instagram",
-      "questions": 5
-    },
-    "smart_learning_lab_gk_10000_questions_reshuffled.json": {
-      "subject": "GK",
-      "quiz_number": 1,
-      "source_counter_after": 0,
       "platform": "instagram",
       "questions": 5
     }

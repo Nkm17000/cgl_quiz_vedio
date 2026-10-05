@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
   schedule:
     # 02:00, 08:00, 14:00 and 20:00 UTC every day.
-    - cron: "0 0,3,6,9,12,15,18,21 * * *"
+    - cron: "0 2,8,14,20 * * *"
 
 permissions:
   contents: write
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -50,16 +50,15 @@ jobs:
         run: |
           mkdir -p data/history output
           if [ ! -f data/history/history.json ]; then
-            echo '{"version": 2, "counters": {}, "last_run": {}}' > data/history/history.json
+            echo '{"version": 3, "counters": {}, "last_run": {}}' > data/history/history.json
           fi
 
-      - name: Generate and publish Instagram quiz videos
+      - name: Generate one 10-question quiz video
         run: python app.py
         env:
-          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          META_GRAPH_VERSION: v23.0
+          DEFER_INSTAGRAM_PUBLISH: "true"
+          META_GRAPH_VERSION: v24.0
           TTS_VOICE: en-IN-NeerjaNeural
           TTS_RATE: +0%
           TTS_VOLUME: +0%
@@ -71,8 +70,102 @@ jobs:
           VIDEO_PRESET: ultrafast
           TTS_CONCURRENCY: 6
 
+      - name: Upload video artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quiz-video-${{ github.run_number }}
+          path: |
+            output/*.mp4
+            output/pending_publish.json
+          retention-days: 7
+
+      # Instagram's Graph API needs a publicly reachable HTTPS MP4 URL.
+      # This follows the working DIVINE_INDIA implementation exactly:
+      # temporary public GitHub Release -> public download URL -> Instagram.
+      - name: Create temporary public Instagram video URL
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}" ] || [ -z "${{ secrets.INSTAGRAM_ACCESS_TOKEN }}" ]; then
+            echo "::error::Instagram secrets are missing."
+            exit 1
+          fi
+
+          VISIBILITY="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.visibility')"
+          if [ "$VISIBILITY" != "public" ]; then
+            echo "::error::Instagram automatic publishing requires this GitHub repository to be public."
+            exit 1
+          fi
+
+          TAG="quiz-reel-${GITHUB_RUN_ID}"
+          VIDEO_FILE="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("output/pending_publish.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          print(data["video_file"])
+          PY
+          )"
+
+          if [ ! -f "output/${VIDEO_FILE}" ]; then
+            echo "::error::Generated video not found: output/${VIDEO_FILE}"
+            exit 1
+          fi
+
+          echo "Creating public release: ${TAG}"
+          gh release create "$TAG" \
+            "output/${VIDEO_FILE}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Quiz Reel ${GITHUB_RUN_NUMBER}" \
+            --notes "Temporary public MP4 used for Instagram Reel publishing."
+
+          VIDEO_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${VIDEO_FILE}"
+
+          echo "INSTAGRAM_RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "INSTAGRAM_VIDEO_URL=$VIDEO_URL" >> "$GITHUB_ENV"
+
+          echo "Waiting for public release asset..."
+          AVAILABLE=0
+          for attempt in $(seq 1 12); do
+            HTTP_CODE="$(curl -L -s -o /dev/null -w '%{http_code}' "$VIDEO_URL" || true)"
+            echo "Release asset check ${attempt}/12: HTTP ${HTTP_CODE}"
+            if [ "$HTTP_CODE" = "200" ]; then
+              AVAILABLE=1
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$AVAILABLE" -ne 1 ]; then
+            echo "::error::GitHub release asset is not publicly downloadable."
+            exit 1
+          fi
+
+          echo "Instagram video URL ready: $VIDEO_URL"
+
+      - name: Publish exactly one video to Instagram
+        env:
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_VIDEO_URL: ${{ env.INSTAGRAM_VIDEO_URL }}
+          META_GRAPH_VERSION: v24.0
+        run: python publish.py
+
+      - name: Cleanup temporary Instagram release
+        if: ${{ always() && env.INSTAGRAM_RELEASE_TAG != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete "$INSTAGRAM_RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --yes \
+            --cleanup-tag || true
+
       - name: Commit quiz counters
-        if: always()
+        if: success()
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
@@ -80,4 +173,3 @@ jobs:
           git commit -m "Update quiz source counters" || exit 0
           git pull --rebase origin main
           git push origin main
-

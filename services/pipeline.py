@@ -1,49 +1,16 @@
+import json
 import os
-from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from config import INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_BUSINESS_ACCOUNT_ID, OUTPUT_DIR, PAGE_URL
-from services.instagram_service import publish_video_to_instagram
-from services.quiz_service import QUIZ_SIZE, commit_quiz_counter, fetch_quizzes, get_manual_quiz
+from config import OUTPUT_DIR, PAGE_URL
+from services.quiz_service import QUIZ_SIZE, fetch_quizzes
 from services.video_service import create_video, generate_images
+from services.instagram_service import post_instagram
 from utils.file_utils import cleanup
-from utils.memory import load_memory, save_memory
 
 
-class InstagramPublishingLimitError(RuntimeError):
-    """Raised when Meta blocks further Content Publishing API media creation."""
+PENDING_FILE = OUTPUT_DIR / "pending_publish.json"
 
-
-IG_COOLDOWN_KEY = "instagram_upload_blocked_until"
-MAX_VIDEOS_PER_RUN = 1
-
-
-
-def _instagram_upload_blocked() -> bool:
-    memory = load_memory()
-    raw = memory.get(IG_COOLDOWN_KEY)
-    if not raw:
-        return False
-    try:
-        blocked_until = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        memory.pop(IG_COOLDOWN_KEY, None)
-        save_memory(memory)
-        return False
-    if blocked_until <= datetime.now(timezone.utc):
-        memory.pop(IG_COOLDOWN_KEY, None)
-        save_memory(memory)
-        return False
-    print(f"⏸️ Instagram upload cooldown active until {blocked_until.strftime('%Y-%m-%d %H:%M:%S UTC')}. Skipping this run.")
-    return True
-
-
-def _set_instagram_cooldown(hours: int = 24) -> None:
-    blocked_until = datetime.now(timezone.utc) + timedelta(hours=hours)
-    memory = load_memory()
-    memory[IG_COOLDOWN_KEY] = blocked_until.isoformat()
-    save_memory(memory)
-    print(f"⏸️ Instagram publishing limit reached. Cooldown saved until {blocked_until.strftime('%Y-%m-%d %H:%M:%S UTC')}.")
 
 def _caption(subject: str) -> str:
     return f"""📊 ALL Subject Exam Focus
@@ -60,7 +27,10 @@ For more quizzes, visit: {PAGE_URL}
 
 
 def _safe_name(value: str) -> str:
-    return "".join(ch.lower() if ch.isalnum() else "_" for ch in value).strip("_")
+    return "".join(
+        ch.lower() if ch.isalnum() else "_"
+        for ch in value
+    ).strip("_")
 
 
 def _output_path(item) -> Path:
@@ -73,12 +43,12 @@ def _generate_one(item):
     quiz = item["questions"]
     if len(quiz) != QUIZ_SIZE:
         raise RuntimeError(
-            f"{item['source_file']} quiz must contain exactly {QUIZ_SIZE} questions; "
-            f"got {len(quiz)}"
+            f"{item['source_file']} quiz must contain exactly {QUIZ_SIZE} "
+            f"questions; got {len(quiz)}"
         )
 
     print("\n" + "=" * 80)
-    print(f"🎯 Generating Instagram Reel: {QUIZ_SIZE}-question mixed quiz")
+    print(f"🎯 Generating exactly {QUIZ_SIZE}-question Instagram Reel")
     print(f"📊 Source: {item['source_file']} | counter: {item['counter']}")
     print("=" * 80)
 
@@ -94,33 +64,34 @@ def _generate_one(item):
         create_video(quiz, output_video, subject=item["subject"])
 
         if not output_video.is_file() or output_video.stat().st_size <= 0:
-            raise RuntimeError(f"Video file was not created correctly: {output_video}")
-
-        if not INSTAGRAM_BUSINESS_ACCOUNT_ID or not INSTAGRAM_ACCESS_TOKEN:
             raise RuntimeError(
-                "Instagram credentials are missing. Set "
-                "INSTAGRAM_BUSINESS_ACCOUNT_ID and INSTAGRAM_ACCESS_TOKEN."
+                f"Video file was not created correctly: {output_video}"
             )
 
-        print("📤 Publishing Reel to Instagram...")
-        result = publish_video_to_instagram(str(output_video), _caption(item["subject"]))
-        if result is None:
-            raise InstagramPublishingLimitError(
-                "Meta Content Publishing API limit reached; video was generated but not published."
-            )
-        print(f"✅ Instagram published successfully: {result}")
-
-        new_counter = commit_quiz_counter(item["source_file"], QUIZ_SIZE)
-        memory = load_memory()
-        last_run = memory.setdefault("last_run", {})
-        last_run[item["source_file"]] = {
+        caption = _caption(item["subject"])
+        pending = {
+            "source_file": item["source_file"],
             "subject": item["subject"],
             "quiz_number": item["quiz_number"],
-            "source_counter_after": new_counter,
-            "platform": "instagram",
+            "counter": item["counter"],
             "questions": QUIZ_SIZE,
+            "video_file": output_video.name,
+            "caption": caption,
         }
-        save_memory(memory)
+        PENDING_FILE.write_text(
+            json.dumps(pending, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        # The default GitHub workflow publishes through the public GitHub
+        # Release URL after this generation step. Direct URL publishing remains
+        # available for local/manual use by setting PUBLIC_VIDEO_URL.
+        video_url = os.getenv("PUBLIC_VIDEO_URL", "").strip()
+        if video_url and os.getenv("DEFER_INSTAGRAM_PUBLISH", "").lower() != "true":
+            print("📤 Publishing Reel using public video URL...")
+            result = post_instagram(video_url, caption)
+            print(f"✅ Instagram published successfully: {result}")
+
         return str(output_video)
     finally:
         cleanup(images)
@@ -129,55 +100,17 @@ def _generate_one(item):
 def run_pipeline():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    if _instagram_upload_blocked():
-        return
+    # Always process exactly one video per run.
+    jobs = fetch_quizzes()
+    if not jobs:
+        raise RuntimeError("No quiz available")
 
-    print("📥 Preparing quizzes for Instagram...")
-    quiz_jobs = fetch_quizzes()
-    if not quiz_jobs:
-        raise RuntimeError("No quizzes available")
-
+    item = jobs[0]
     event = os.getenv("GITHUB_EVENT_NAME", "").strip().lower()
-    is_manual_run = event in {"workflow_dispatch", "push", ""}
-
-    # IMPORTANT: process exactly ONE Instagram video per workflow run.
-    # Sources remain in stable order, so the next run advances to the next
-    # subject/source after a successful publish and committed question track.
-    ordered_jobs = get_manual_quiz(quiz_jobs) if is_manual_run else quiz_jobs
-    jobs_to_process = ordered_jobs[:MAX_VIDEOS_PER_RUN]
-
-    if is_manual_run:
-        print(
-            f"🖐️ Manual/push run: generating {len(jobs_to_process)} Instagram video "
-            f"(limit={MAX_VIDEOS_PER_RUN}; remaining subjects wait for later runs)."
-        )
+    if event in {"workflow_dispatch", "push", ""}:
+        print("🖐️ Manual/push run: exactly 1 video, exactly 10 questions.")
     else:
-        print(
-            f"🗓️ Scheduled run: generating {len(jobs_to_process)} Instagram video "
-            f"(limit={MAX_VIDEOS_PER_RUN}; remaining subjects wait for later runs)."
-        )
+        print("🗓️ Scheduled run: exactly 1 video, exactly 10 questions.")
 
-    print("🔒 Instagram publishing is strictly sequential: this run will upload ONLY ONE Reel.")
-
-    completed = 0
-    failed = 0
-    for position, item in enumerate(jobs_to_process, start=1):
-        print(f"\n🔢 Instagram video {position}/{len(jobs_to_process)}: {item['subject']}")
-        try:
-            _generate_one(item)
-            completed += 1
-        except InstagramPublishingLimitError as exc:
-            failed += 1
-            _set_instagram_cooldown()
-            print(f"⏸️ Stopping run after Instagram publishing-limit error: {exc}")
-            break
-        except Exception as exc:
-            failed += 1
-            print(f"❌ Failed {item['subject']} quiz {item['quiz_number']} from {item['source_file']}: {exc}")
-            # Continue to the next subject so one bad source does not block the
-            # other scheduled subject videos.
-
-    print("=" * 80)
-    print(f"✅ Instagram completed: {completed}/{len(jobs_to_process)}")
-    print(f"❌ Instagram failed: {failed}/{len(jobs_to_process)}")
-    print("=" * 80)
+    _generate_one(item)
+    print("✅ Video generation completed. Instagram publication is handled separately by the workflow.")

@@ -26,12 +26,8 @@ def _subject_from_file(path: Path) -> str:
     if _is_mix_file(path):
         return "ALL SUBJECTS"
     exact_patterns = (
-        # Keep specific subjects before generic GK so rajasthan_gk is not
-        # accidentally classified as the generic GK subject.
         ("english_grammar", "ENGLISH"),
         ("general_science", "GENERAL SCIENCE"),
-        ("computer_science", "COMPUTER SCIENCE"),
-        ("rajasthan_gk", "RAJASTHAN GK"),
         ("reasoning", "REASONING"),
         ("math", "MATH"),
         ("gk", "GK"),
@@ -43,10 +39,10 @@ def _subject_from_file(path: Path) -> str:
 
 
 def fetch_quizzes():
-    """Return one 10-question quiz for every supported JSON source.
+    """Return exactly one 10-question quiz for the current run.
 
-    Every source has an independent persistent question track. The track is
-    committed only after that source's Reel has been successfully published.
+    The preferred source is the mixed question bank. A persistent per-source
+    counter advances only after the Instagram Reel is successfully published.
     """
     files = sorted(Path(QUIZ_DIR).glob("*.json"))
     if not files:
@@ -54,83 +50,69 @@ def fetch_quizzes():
 
     mix_files = [path for path in files if _is_mix_file(path)]
     if len(mix_files) > 1:
-        raise ValueError("Only one mixed-question JSON file is supported; found: " + ", ".join(path.name for path in mix_files))
+        raise ValueError(
+            "Only one mixed-question JSON file is supported; found: "
+            + ", ".join(path.name for path in mix_files)
+        )
+
+    # Prefer the mixed bank when it exists. Otherwise use the first JSON file.
+    path = mix_files[0] if mix_files else files[0]
+    data = _load_json(path)
+
+    if len(data) < QUIZ_SIZE:
+        raise ValueError(
+            f"{path.name} contains only {len(data)} questions; "
+            f"at least {QUIZ_SIZE} are required."
+        )
 
     memory = load_memory()
     counters = memory.get("counters")
     if not isinstance(counters, dict):
         counters = {}
 
-    tracks = memory.get("tracks")
-    if not isinstance(tracks, dict):
-        tracks = {}
+    source_key = path.name
+    counter = int(counters.get(source_key, 0) or 0)
 
-    quizzes = []
-    for path in files:
-        data = _load_json(path)
-        if len(data) < QUIZ_SIZE:
-            raise ValueError(f"{path.name} contains only {len(data)} questions; at least {QUIZ_SIZE} are required.")
+    # Start a fresh cycle when fewer than 10 questions remain.
+    if counter + QUIZ_SIZE > len(data):
+        counter = 0
 
-        source_key = path.name
-        counter = int(counters.get(source_key, 0) or 0)
-        if counter + QUIZ_SIZE > len(data):
-            counter = 0
+    batch = list(data[counter:counter + QUIZ_SIZE])
+    if len(batch) != QUIZ_SIZE:
+        raise ValueError(
+            f"Could not select {QUIZ_SIZE} questions from {source_key} "
+            f"at counter {counter}"
+        )
 
-        batch = list(data[counter:counter + QUIZ_SIZE])
-        if len(batch) != QUIZ_SIZE:
-            raise ValueError(f"Could not select {QUIZ_SIZE} questions from {source_key} at counter {counter}")
-        random.shuffle(batch)
+    random.shuffle(batch)
 
-        subject = _subject_from_file(path)
-        tracks[source_key] = {
-            "subject": subject,
-            "next_question_index": counter,
-            "total_questions": len(data),
-            "questions_per_quiz": QUIZ_SIZE,
-        }
-        quizzes.append({
-            "questions": batch,
-            "subject": subject,
-            "source_file": source_key,
-            "quiz_number": (counter // QUIZ_SIZE) + 1,
-            "quiz_count_for_source": max(1, len(data) // QUIZ_SIZE),
-            "counter": counter,
-        })
-        print(f"🎯 {subject}: planned 1 quiz of {QUIZ_SIZE} questions from {source_key}; starting counter {counter}")
+    subject = _subject_from_file(path)
+    item = {
+        "questions": batch,
+        "subject": subject,
+        "source_file": source_key,
+        "quiz_number": (counter // QUIZ_SIZE) + 1,
+        "quiz_count_for_source": max(1, len(data) // QUIZ_SIZE),
+        "counter": counter,
+    }
 
-    memory["counters"] = counters
-    memory["tracks"] = tracks
-    save_memory(memory)
+    print(
+        f"🎯 {subject}: planned exactly 1 quiz of {QUIZ_SIZE} questions "
+        f"from {source_key}; starting counter {counter}"
+    )
+    print("📦 Total videos this run: 1")
+    return [item]
 
-    print(f"📦 Total quizzes this run: {len(quizzes)}")
-    return quizzes
-
-
-def get_manual_quiz(quizzes):
-    """Return all subject jobs for manual/push runs in stable source order."""
-    return list(quizzes)
 
 def commit_quiz_counter(source_file: str, amount: int = QUIZ_SIZE) -> int:
     memory = load_memory()
     counters = memory.get("counters")
     if not isinstance(counters, dict):
         counters = {}
-
-    tracks = memory.get("tracks")
-    if not isinstance(tracks, dict):
-        tracks = {}
-
     current = int(counters.get(source_file, 0) or 0)
     new_value = current + int(amount)
     counters[source_file] = new_value
     memory["counters"] = counters
-
-    track = tracks.setdefault(source_file, {})
-    track["next_question_index"] = new_value
-    track["questions_per_quiz"] = QUIZ_SIZE
-    track["last_committed_amount"] = int(amount)
-    memory["tracks"] = tracks
-
     save_memory(memory)
-    print(f"💾 Question track committed: {source_file}: {current} -> {new_value}")
+    print(f"💾 Counter committed: {source_file}: {current} -> {new_value}")
     return new_value
