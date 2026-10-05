@@ -15,6 +15,7 @@ class InstagramPublishingLimitError(RuntimeError):
 
 
 IG_COOLDOWN_KEY = "instagram_upload_blocked_until"
+MAX_VIDEOS_PER_RUN = 1
 
 
 
@@ -138,14 +139,25 @@ def run_pipeline():
 
     event = os.getenv("GITHUB_EVENT_NAME", "").strip().lower()
     is_manual_run = event in {"workflow_dispatch", "push", ""}
-    jobs_to_process = get_manual_quiz(quiz_jobs) if is_manual_run else quiz_jobs
+
+    # IMPORTANT: process exactly ONE Instagram video per workflow run.
+    # Sources remain in stable order, so the next run advances to the next
+    # subject/source after a successful publish and committed question track.
+    ordered_jobs = get_manual_quiz(quiz_jobs) if is_manual_run else quiz_jobs
+    jobs_to_process = ordered_jobs[:MAX_VIDEOS_PER_RUN]
 
     if is_manual_run:
-        print(f"🖐️ Manual/push run: generating {len(jobs_to_process)} Instagram videos (ALL SUBJECTS).")
+        print(
+            f"🖐️ Manual/push run: generating {len(jobs_to_process)} Instagram video "
+            f"(limit={MAX_VIDEOS_PER_RUN}; remaining subjects wait for later runs)."
+        )
     else:
-        print(f"🗓️ Scheduled run: generating {len(jobs_to_process)} Instagram videos (one per subject/source).")
+        print(
+            f"🗓️ Scheduled run: generating {len(jobs_to_process)} Instagram video "
+            f"(limit={MAX_VIDEOS_PER_RUN}; remaining subjects wait for later runs)."
+        )
 
-    print("🔒 Instagram publishing is strictly sequential: finish one Reel before starting the next.")
+    print("🔒 Instagram publishing is strictly sequential: this run will upload ONLY ONE Reel.")
 
     completed = 0
     failed = 0
