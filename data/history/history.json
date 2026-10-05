@@ -1,13 +1,77 @@
 {
   "version": 3,
   "counters": {
-    "smart_learning_lab_50000_mixed_questions.json": 15
+    "smart_learning_lab_50000_mixed_questions.json": 15,
+    "smart_learning_lab_english_grammar_10000_questions_reshuffled.json": 10,
+    "smart_learning_lab_general_science_10000_questions_reshuffled.json": 10,
+    "smart_learning_lab_gk_10000_questions_reshuffled.json": 10,
+    "smart_learning_lab_math_10000_questions_reshuffled.json": 10,
+    "smart_learning_lab_reasoning_10000_questions_reshuffled.json": 10,
+    "smart_learning_lab_50000_mixed_questions.json::History": 10,
+    "smart_learning_lab_50000_mixed_questions.json::Geography": 10,
+    "smart_learning_lab_50000_mixed_questions.json::Polity": 10
   },
   "last_run": {
     "smart_learning_lab_50000_mixed_questions.json": {
       "subject": "ALL SUBJECTS",
       "quiz_number": 1,
       "source_counter_after": 15,
+      "platform": "instagram",
+      "questions": 10
+    },
+    "smart_learning_lab_english_grammar_10000_questions_reshuffled.json": {
+      "subject": "ENGLISH",
+      "quiz_number": 1,
+      "source_counter_after": 10,
+      "platform": "instagram",
+      "questions": 10
+    },
+    "smart_learning_lab_general_science_10000_questions_reshuffled.json": {
+      "subject": "GENERAL SCIENCE",
+      "quiz_number": 1,
+      "source_counter_after": 10,
+      "platform": "instagram",
+      "questions": 10
+    },
+    "smart_learning_lab_gk_10000_questions_reshuffled.json": {
+      "subject": "GK",
+      "quiz_number": 1,
+      "source_counter_after": 10,
+      "platform": "instagram",
+      "questions": 10
+    },
+    "smart_learning_lab_math_10000_questions_reshuffled.json": {
+      "subject": "MATH",
+      "quiz_number": 1,
+      "source_counter_after": 10,
+      "platform": "instagram",
+      "questions": 10
+    },
+    "smart_learning_lab_reasoning_10000_questions_reshuffled.json": {
+      "subject": "REASONING",
+      "quiz_number": 1,
+      "source_counter_after": 10,
+      "platform": "instagram",
+      "questions": 10
+    },
+    "smart_learning_lab_50000_mixed_questions.json::History": {
+      "subject": "HISTORY",
+      "quiz_number": 1,
+      "source_counter_after": 10,
+      "platform": "instagram",
+      "questions": 10
+    },
+    "smart_learning_lab_50000_mixed_questions.json::Geography": {
+      "subject": "GEOGRAPHY",
+      "quiz_number": 1,
+      "source_counter_after": 10,
+      "platform": "instagram",
+      "questions": 10
+    },
+    "smart_learning_lab_50000_mixed_questions.json::Polity": {
+      "subject": "POLITY",
+      "quiz_number": 1,
+      "source_counter_after": 10,
       "platform": "instagram",
       "questions": 10
     }
