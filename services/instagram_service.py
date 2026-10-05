@@ -13,10 +13,16 @@ GRAPH_BASE = f"https://graph.facebook.com/{META_GRAPH_VERSION}"
 
 def _graph(path, token, method="POST", **kwargs):
     url = f"{GRAPH_BASE}/{path.lstrip('/')}"
+    # Merge the access token into any caller-supplied query parameters.
+    # Passing `params` both explicitly and through **kwargs causes:
+    # TypeError: requests.api.request() got multiple values for keyword argument 'params'
+    request_params = dict(kwargs.pop("params", {}) or {})
+    request_params["access_token"] = token
+
     response = requests.request(
         method,
         url,
-        params={"access_token": token},
+        params=request_params,
         timeout=120,
         **kwargs,
     )
