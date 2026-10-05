@@ -36,7 +36,8 @@ def _safe_name(value: str) -> str:
 def _output_path(item) -> Path:
     source = _safe_name(Path(item["source_file"]).stem)
     number = item["quiz_number"]
-    return OUTPUT_DIR / f"instagram_mixed_quiz_{source}_{number:05d}.mp4"
+    subject = _safe_name(item["subject"])
+    return OUTPUT_DIR / f"instagram_{subject}_quiz_{source}_{number:05d}.mp4"
 
 
 def _generate_one(item):
@@ -100,17 +101,42 @@ def _generate_one(item):
 def run_pipeline():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Always process exactly one video per run.
     jobs = fetch_quizzes()
-    if not jobs:
-        raise RuntimeError("No quiz available")
+    if len(jobs) != 8:
+        raise RuntimeError(f"Expected exactly 8 subject quizzes, got {len(jobs)}")
 
-    item = jobs[0]
     event = os.getenv("GITHUB_EVENT_NAME", "").strip().lower()
-    if event in {"workflow_dispatch", "push", ""}:
-        print("🖐️ Manual/push run: exactly 1 video, exactly 10 questions.")
-    else:
-        print("🗓️ Scheduled run: exactly 1 video, exactly 10 questions.")
+    print("=" * 80)
+    print(f"🚀 {event or 'local'} run: generating all 8 subject quizzes")
+    print(f"📊 Questions per quiz: {QUIZ_SIZE}")
+    print("📦 Videos this run: 8")
+    print("=" * 80)
 
-    _generate_one(item)
-    print("✅ Video generation completed. Instagram publication is handled separately by the workflow.")
+    generated = []
+    for index, item in enumerate(jobs, 1):
+        print(f"\n🔹 SUBJECT {index}/8: {item['subject']}")
+        generated.append(_generate_one(item))
+
+    # Publish is intentionally handled by publish.py after public GitHub
+    # Release URLs are created. The pending file contains all 8 jobs.
+    pending_file = OUTPUT_DIR / "pending_publish.json"
+    pending_file.write_text(
+        json.dumps(
+            [
+                {
+                    "source_file": item["source_file"],
+                    "subject": item["subject"],
+                    "quiz_number": item["quiz_number"],
+                    "counter": item["counter"],
+                    "questions": QUIZ_SIZE,
+                    "video_file": Path(video).name,
+                    "caption": _caption(item["subject"]),
+                }
+                for item, video in zip(jobs, generated)
+            ],
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    print("\n✅ All 8 videos generated. Instagram publication is handled separately by the workflow.")

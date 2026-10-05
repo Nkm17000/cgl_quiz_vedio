@@ -13,39 +13,41 @@ PENDING_FILE = OUTPUT_DIR / "pending_publish.json"
 
 def main():
     if not PENDING_FILE.exists():
-        raise RuntimeError(
-            f"{PENDING_FILE} not found. Run app.py first."
-        )
+        raise RuntimeError(f"{PENDING_FILE} not found. Run app.py first.")
 
-    pending = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
+    pending_all = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
+    if isinstance(pending_all, dict):
+        pending_all = [pending_all]
+    if not isinstance(pending_all, list) or len(pending_all) != 8:
+        raise RuntimeError(f"Expected exactly 8 pending quizzes, got {len(pending_all) if isinstance(pending_all, list) else 'invalid'}")
+
+    index = int(os.getenv("PENDING_INDEX", "0"))
+    if index < 0 or index >= len(pending_all):
+        raise RuntimeError(f"PENDING_INDEX must be 0-7; got {index}")
+
+    pending = pending_all[index]
     video_url = os.getenv("INSTAGRAM_VIDEO_URL", "").strip()
-
     if not video_url:
-        raise RuntimeError(
-            "INSTAGRAM_VIDEO_URL is missing. The workflow must create a "
-            "public GitHub Release asset before Instagram publishing."
-        )
+        raise RuntimeError("INSTAGRAM_VIDEO_URL is missing.")
 
     if int(pending.get("questions", 0)) != QUIZ_SIZE:
         raise RuntimeError(
-            f"Pending video has {pending.get('questions')} questions; "
-            f"expected exactly {QUIZ_SIZE}."
+            f"Pending video has {pending.get('questions')} questions; expected exactly {QUIZ_SIZE}."
         )
 
     print("=" * 80)
-    print("📤 Publishing exactly one quiz video to Instagram")
+    print(f"📤 Publishing subject {index + 1}/8 to Instagram")
+    print(f"📚 Subject: {pending['subject']}")
     print(f"📊 Questions: {pending['questions']}")
     print(f"📁 Source: {pending['source_file']}")
     print(f"🔢 Quiz number: {pending['quiz_number']}")
+    print(f"🔗 Video URL: {video_url}")
     print("=" * 80)
 
     result = post_instagram(video_url, pending["caption"])
     print(f"✅ Instagram published successfully: {result}")
 
-    new_counter = commit_quiz_counter(
-        pending["source_file"],
-        QUIZ_SIZE,
-    )
+    new_counter = commit_quiz_counter(pending["source_file"], QUIZ_SIZE)
 
     history_file = ROOT / "data" / "history" / "history.json"
     history = {}
@@ -68,8 +70,7 @@ def main():
         encoding="utf-8",
     )
 
-    PENDING_FILE.unlink(missing_ok=True)
-    print("💾 Quiz counter committed only after successful Instagram publication.")
+    print(f"💾 {pending['subject']} counter committed after successful publication.")
 
 
 if __name__ == "__main__":

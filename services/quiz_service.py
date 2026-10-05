@@ -6,7 +6,20 @@ from config import QUIZ_DIR
 from utils.memory import load_memory, save_memory
 
 QUIZ_SIZE = 10
-MIX_QUIZ_COUNT = 1
+
+# Eight subject runs per push/manual execution. Five use the dedicated banks
+# shipped with this repository; the remaining three are selected from the
+# mixed 50,000-question bank by category.
+SUBJECT_JOBS = [
+    {"subject": "ENGLISH", "file": "smart_learning_lab_english_grammar_10000_questions_reshuffled.json"},
+    {"subject": "GENERAL SCIENCE", "file": "smart_learning_lab_general_science_10000_questions_reshuffled.json"},
+    {"subject": "GK", "file": "smart_learning_lab_gk_10000_questions_reshuffled.json"},
+    {"subject": "MATH", "file": "smart_learning_lab_math_10000_questions_reshuffled.json"},
+    {"subject": "REASONING", "file": "smart_learning_lab_reasoning_10000_questions_reshuffled.json"},
+    {"subject": "HISTORY", "file": "smart_learning_lab_50000_mixed_questions.json", "category": "History"},
+    {"subject": "GEOGRAPHY", "file": "smart_learning_lab_50000_mixed_questions.json", "category": "Geography"},
+    {"subject": "POLITY", "file": "smart_learning_lab_50000_mixed_questions.json", "category": "Polity"},
+]
 
 
 def _load_json(path: Path):
@@ -17,91 +30,78 @@ def _load_json(path: Path):
     return data
 
 
-def _is_mix_file(path: Path) -> bool:
-    return "mixed" in path.stem.casefold()
+def _matches_category(item, category):
+    return str(item.get("category", "")).strip().casefold() == category.casefold()
 
 
-def _subject_from_file(path: Path) -> str:
-    stem = path.stem.casefold()
-    if _is_mix_file(path):
-        return "ALL SUBJECTS"
-    exact_patterns = (
-        ("english_grammar", "ENGLISH"),
-        ("general_science", "GENERAL SCIENCE"),
-        ("reasoning", "REASONING"),
-        ("math", "MATH"),
-        ("gk", "GK"),
-    )
-    for pattern, subject in exact_patterns:
-        if pattern in stem:
-            return subject
-    return path.stem.replace("_", " ").upper()
+def _select_questions(data, job, counter):
+    category = job.get("category")
+    if category:
+        pool = [item for item in data if _matches_category(item, category)]
+    else:
+        pool = data
+
+    if len(pool) < QUIZ_SIZE:
+        raise ValueError(
+            f"Not enough questions for {job['subject']}: {len(pool)} available; "
+            f"need at least {QUIZ_SIZE}."
+        )
+
+    if counter + QUIZ_SIZE > len(pool):
+        counter = 0
+
+    batch = list(pool[counter:counter + QUIZ_SIZE])
+    if len(batch) != QUIZ_SIZE:
+        raise ValueError(
+            f"Could not select {QUIZ_SIZE} questions for {job['subject']} "
+            f"at counter {counter}."
+        )
+    random.shuffle(batch)
+    return batch, counter, len(pool)
 
 
 def fetch_quizzes():
-    """Return exactly one 10-question quiz for the current run.
-
-    The preferred source is the mixed question bank. A persistent per-source
-    counter advances only after the Instagram Reel is successfully published.
-    """
-    files = sorted(Path(QUIZ_DIR).glob("*.json"))
+    """Return exactly eight independent 10-question subject quizzes."""
+    files = {p.name: p for p in Path(QUIZ_DIR).glob("*.json")}
     if not files:
         raise FileNotFoundError(f"No quiz JSON files found in {QUIZ_DIR}")
-
-    mix_files = [path for path in files if _is_mix_file(path)]
-    if len(mix_files) > 1:
-        raise ValueError(
-            "Only one mixed-question JSON file is supported; found: "
-            + ", ".join(path.name for path in mix_files)
-        )
-
-    # Prefer the mixed bank when it exists. Otherwise use the first JSON file.
-    path = mix_files[0] if mix_files else files[0]
-    data = _load_json(path)
-
-    if len(data) < QUIZ_SIZE:
-        raise ValueError(
-            f"{path.name} contains only {len(data)} questions; "
-            f"at least {QUIZ_SIZE} are required."
-        )
 
     memory = load_memory()
     counters = memory.get("counters")
     if not isinstance(counters, dict):
         counters = {}
 
-    source_key = path.name
-    counter = int(counters.get(source_key, 0) or 0)
+    jobs = []
+    for job in SUBJECT_JOBS:
+        path = files.get(job["file"])
+        if path is None:
+            raise FileNotFoundError(
+                f"Required quiz bank missing for {job['subject']}: {job['file']}"
+            )
 
-    # Start a fresh cycle when fewer than 10 questions remain.
-    if counter + QUIZ_SIZE > len(data):
-        counter = 0
+        data = _load_json(path)
+        source_key = path.name + (f"::{job['category']}" if job.get("category") else "")
+        counter = int(counters.get(source_key, 0) or 0)
+        batch, counter, pool_size = _select_questions(data, job, counter)
 
-    batch = list(data[counter:counter + QUIZ_SIZE])
-    if len(batch) != QUIZ_SIZE:
-        raise ValueError(
-            f"Could not select {QUIZ_SIZE} questions from {source_key} "
-            f"at counter {counter}"
+        item = {
+            "questions": batch,
+            "subject": job["subject"],
+            "source_file": source_key,
+            "source_path": path.name,
+            "category": job.get("category"),
+            "quiz_number": (counter // QUIZ_SIZE) + 1,
+            "quiz_count_for_source": max(1, pool_size // QUIZ_SIZE),
+            "counter": counter,
+        }
+        jobs.append(item)
+        print(
+            f"🎯 {job['subject']}: {QUIZ_SIZE} questions | "
+            f"source={path.name} | counter={counter}"
         )
 
-    random.shuffle(batch)
-
-    subject = _subject_from_file(path)
-    item = {
-        "questions": batch,
-        "subject": subject,
-        "source_file": source_key,
-        "quiz_number": (counter // QUIZ_SIZE) + 1,
-        "quiz_count_for_source": max(1, len(data) // QUIZ_SIZE),
-        "counter": counter,
-    }
-
-    print(
-        f"🎯 {subject}: planned exactly 1 quiz of {QUIZ_SIZE} questions "
-        f"from {source_key}; starting counter {counter}"
-    )
-    print("📦 Total videos this run: 1")
-    return [item]
+    print(f"📦 Total videos this run: {len(jobs)}")
+    return jobs
 
 
 def commit_quiz_counter(source_file: str, amount: int = QUIZ_SIZE) -> int:
