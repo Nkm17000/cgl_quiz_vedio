@@ -1,0 +1,83 @@
+name: Generate Quiz Videos
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    # 02:00, 08:00, 14:00 and 20:00 UTC every day.
+    - cron: "0 2,8,14,20 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: quiz-video
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Verify or install FFmpeg
+        run: |
+          if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+            echo "FFmpeg already available on runner"
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check --prefer-binary -r requirements.txt
+
+      - name: Prepare folders
+        run: |
+          mkdir -p data/history output
+          if [ ! -f data/history/history.json ]; then
+            echo '{"version": 2, "counters": {}, "last_run": {}}' > data/history/history.json
+          fi
+
+      - name: Generate and publish Instagram quiz videos
+        run: python app.py
+        env:
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          META_GRAPH_VERSION: v23.0
+          TTS_VOICE: en-IN-NeerjaNeural
+          TTS_RATE: +0%
+          TTS_VOLUME: +0%
+          PAGE_URL: ${{ secrets.PAGE_URL }}
+          VIDEO_WIDTH: 720
+          VIDEO_HEIGHT: 1280
+          FPS: 30
+          VIDEO_CRF: 30
+          VIDEO_PRESET: ultrafast
+          TTS_CONCURRENCY: 6
+
+      - name: Commit quiz counters
+        if: always()
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add data/history/history.json
+          git commit -m "Update quiz source counters" || exit 0
+          git pull --rebase origin main
+          git push origin main
+
