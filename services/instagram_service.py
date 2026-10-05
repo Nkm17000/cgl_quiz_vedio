@@ -1,5 +1,6 @@
+import hashlib
 import json
-import shutil
+import mimetypes
 import subprocess
 import time
 from pathlib import Path
@@ -13,30 +14,19 @@ from config import (
 )
 
 MAX_REEL_BYTES = 1_000 * 1024 * 1024
-INSTAGRAM_UPLOAD_ATTEMPTS = 3
-INSTAGRAM_RETRY_DELAY_SECONDS = 15
-INSTAGRAM_PROCESSING_TIMEOUT_SECONDS = 900
-INSTAGRAM_PROCESSING_POLL_SECONDS = 10
 GRAPH_BASE = f"https://graph.facebook.com/{META_GRAPH_VERSION}"
-
-# Meta returns this error when the Instagram Content Publishing API quota has
-# been reached. It is a platform/account limit, not a video-format problem.
-PUBLISHING_LIMIT_CODE = 9
-PUBLISHING_LIMIT_SUBCODES = {2207069}
 
 
 def _require_config():
     if not INSTAGRAM_ACCESS_TOKEN:
         raise ValueError("INSTAGRAM_ACCESS_TOKEN is missing.")
-
     if not INSTAGRAM_BUSINESS_ACCOUNT_ID:
         raise ValueError("INSTAGRAM_BUSINESS_ACCOUNT_ID is missing.")
-
     print("📸 Instagram Business Account ID: configured")
+    print(f"🔧 Meta Graph API version: {META_GRAPH_VERSION}")
 
 
 def _response_details(response: requests.Response) -> str:
-    """Return Meta's JSON error without exposing access tokens."""
     try:
         payload = response.json()
         return json.dumps(payload, ensure_ascii=False)
@@ -44,38 +34,15 @@ def _response_details(response: requests.Response) -> str:
         return response.text[:4000]
 
 
-def _meta_error_payload(response: requests.Response):
-    try:
-        payload = response.json()
-        return payload.get("error") or {}
-    except ValueError:
-        return {}
-
-
-def _is_publishing_limit_error(response: requests.Response) -> bool:
-    """Detect Meta's account-level Content Publishing API limit error."""
-    error = _meta_error_payload(response)
-    try:
-        code = int(error.get("code", -1))
-    except (TypeError, ValueError):
-        code = -1
-
-    try:
-        subcode = int(error.get("error_subcode", -1))
-    except (TypeError, ValueError):
-        subcode = -1
-
-    return (
-        code == PUBLISHING_LIMIT_CODE
-        and subcode in PUBLISHING_LIMIT_SUBCODES
-    )
-
-
 def _raise_meta_error(response: requests.Response, action: str):
     if response.ok:
         return
-
     details = _response_details(response)
+    print(f"❌ Meta {action}: HTTP {response.status_code}")
+    print(f"📋 Meta response: {details}")
+    print(f"📋 Response content-type: {response.headers.get('content-type')}")
+    print(f"📋 Response request-id: "
+          f"{response.headers.get('x-fb-request-id') or response.headers.get('x-fb-trace-id')}")
     raise RuntimeError(
         f"Instagram {action} failed: HTTP {response.status_code}. "
         f"Meta response: {details}"
@@ -83,8 +50,8 @@ def _raise_meta_error(response: requests.Response, action: str):
 
 
 def _validate_account():
-    """Confirm that the configured ID is an Instagram professional account."""
     url = f"{GRAPH_BASE}/{INSTAGRAM_BUSINESS_ACCOUNT_ID}"
+    print(f"🔎 Validating Instagram account ID: {INSTAGRAM_BUSINESS_ACCOUNT_ID}")
     response = requests.get(
         url,
         params={
@@ -106,71 +73,96 @@ def _validate_account():
         )
 
     print(f"✅ Instagram account validated: @{username}")
+    return username
 
 
-def _check_publishing_limit():
-    """
-    Best-effort quota preflight.
+def _video_diagnostics(video_path):
+    """Print detailed MP4/codec information without changing the file."""
+    path = Path(video_path)
+    size = path.stat().st_size
+    sha256 = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            sha256.update(chunk)
 
-    Meta's exact quota response can vary by Graph API version/app setup, so a
-    failure of this optional check does not block publishing. The authoritative
-    POST error is still handled by _create_resumable_container().
-    """
-    url = f"{GRAPH_BASE}/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/content_publishing_limit"
-    try:
-        response = requests.get(
-            url,
-            params={
-                "fields": "config,quota_usage",
-                "access_token": INSTAGRAM_ACCESS_TOKEN,
-            },
-            timeout=30,
-        )
-    except requests.RequestException as exc:
-        print(f"ℹ️ Instagram publishing-limit preflight unavailable: {exc}")
-        return False
+    print("\n🔬 VIDEO DIAGNOSTICS")
+    print(f"   path: {path}")
+    print(f"   exists: {path.is_file()}")
+    print(f"   size_bytes: {size}")
+    print(f"   size_mb: {size / 1024 / 1024:.3f}")
+    print(f"   extension: {path.suffix.lower()}")
+    print(f"   sha256: {sha256.hexdigest()}")
 
-    if not response.ok:
-        print(
-            "ℹ️ Instagram publishing-limit preflight unavailable; "
-            "continuing to the normal publish request."
-        )
-        return False
+    ffprobe = __import__("shutil").which("ffprobe")
+    if not ffprobe:
+        print("⚠️ ffprobe not found; codec/container diagnostics unavailable.")
+        return
 
-    try:
-        data = response.json()
-    except ValueError:
-        return False
+    cmd = [
+        ffprobe, "-v", "error",
+        "-show_entries",
+        "format=format_name,format_long_name,duration,size,bit_rate:"
+        "stream=index,codec_type,codec_name,profile,pix_fmt,width,height,"
+        "r_frame_rate,avg_frame_rate,sample_rate,channels,channel_layout,"
+        "bit_rate,duration",
+        "-of", "json",
+        str(path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
-    config = data.get("config") or {}
-    quota_usage = data.get("quota_usage")
-
-    # Handle the common response shape without depending on one exact schema.
-    limit = (
-        config.get("quota_total")
-        or config.get("limit")
-        or config.get("max_posts")
-    )
+    if result.returncode != 0:
+        print("❌ ffprobe failed:")
+        print(result.stderr[:4000])
+        return
 
     try:
-        if limit is not None and quota_usage is not None:
-            usage = float(quota_usage)
-            maximum = float(limit)
-            if maximum > 0 and usage >= maximum:
-                print(
-                    f"⛔ Instagram Content Publishing quota reached "
-                    f"({usage:g}/{maximum:g})."
-                )
-                return True
-    except (TypeError, ValueError):
-        pass
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        print("❌ Could not parse ffprobe output.")
+        print(result.stdout[:4000])
+        return
 
-    return False
+    print("   ffprobe:")
+    print(json.dumps(data, ensure_ascii=False, indent=2))
+
+    fmt = data.get("format", {})
+    streams = data.get("streams", [])
+    video = next((s for s in streams if s.get("codec_type") == "video"), None)
+    audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
+
+    print("📐 NORMALIZATION CHECK")
+    if video:
+        print(f"   video_codec: {video.get('codec_name')}")
+        print(f"   profile: {video.get('profile')}")
+        print(f"   pixel_format: {video.get('pix_fmt')}")
+        print(f"   resolution: {video.get('width')}x{video.get('height')}")
+        print(f"   fps: {video.get('avg_frame_rate')}")
+    else:
+        print("   ❌ No video stream found.")
+
+    if audio:
+        print(f"   audio_codec: {audio.get('codec_name')}")
+        print(f"   sample_rate: {audio.get('sample_rate')}")
+        print(f"   channels: {audio.get('channels')}")
+        print(f"   channel_layout: {audio.get('channel_layout')}")
+    else:
+        print("   ⚠️ No audio stream found.")
+
+    print(f"   container: {fmt.get('format_name')}")
+    print(f"   duration: {fmt.get('duration')}")
+    print(f"   container_size: {fmt.get('size')}")
+    print(f"   bitrate: {fmt.get('bit_rate')}")
 
 
-def _create_resumable_container(caption):
-    """Create an Instagram Reel upload container for a local MP4."""
+def _create_resumable_container(caption, attempt):
     url = f"{GRAPH_BASE}/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media"
+
+    print(f"\n📦 Creating Instagram Reel container (attempt {attempt}/3)")
+    print(f"   media_type=REELS")
+    print(f"   upload_type=resumable")
+    print(f"   share_to_feed=true")
+    print(f"   caption_length={len(caption)}")
+
     response = requests.post(
         url,
         data={
@@ -183,23 +175,12 @@ def _create_resumable_container(caption):
         timeout=60,
     )
 
-    if _is_publishing_limit_error(response):
-        error = _meta_error_payload(response)
-        message = error.get("error_user_msg") or error.get("message") or "Media creation limit exceeded"
-        print(
-            "⛔ Instagram Content Publishing API limit reached. "
-            f"Meta: {message}"
-        )
-        print(
-            "ℹ️ No video upload was attempted. The generated MP4 is kept in "
-            "the output directory. Try again after Meta's publishing window resets."
-        )
-        return None, None
-
-    if not response.ok:
-        _raise_meta_error(response, "Reel container creation")
+    _raise_meta_error(response, "Reel container creation")
 
     data = response.json()
+    print(f"📋 Container creation response: "
+          f"{json.dumps({k: v for k, v in data.items() if k not in {'access_token'}}, ensure_ascii=False)}")
+
     container_id = data.get("id")
     upload_uri = data.get("uri")
 
@@ -210,11 +191,12 @@ def _create_resumable_container(caption):
         )
 
     print(f"📦 Instagram Reel container created: {container_id}")
+    print(f"🔗 Upload URI host/path: {upload_uri.split('?')[0]}")
     return container_id, upload_uri
 
 
-def _upload_video(upload_uri, video_path):
-    """Upload the local MP4 to Meta's resumable upload endpoint."""
+def _upload_video(upload_uri, video_path, attempt):
+    """Keep the original working resumable upload contract and add diagnostics."""
     path = Path(video_path)
     if not path.is_file():
         raise FileNotFoundError(f"Instagram video not found: {path}")
@@ -228,22 +210,44 @@ def _upload_video(upload_uri, video_path):
             f"maximum supported size is {MAX_REEL_BYTES / 1024 / 1024:.0f} MB."
         )
 
+    print(f"\n📤 INSTAGRAM BINARY UPLOAD {attempt}/3")
+    print(f"   file: {path}")
+    print(f"   size: {file_size} bytes ({file_size / 1024 / 1024:.3f} MB)")
+    print(f"   content-type: video/mp4")
+    print("   offset: 0")
+    print(f"   file_size header: {file_size}")
+    print("   upload mode: resumable")
+    print("   timeout: 900s")
+
     headers = {
+        # This matches the original version that successfully worked.
         "Authorization": f"OAuth {INSTAGRAM_ACCESS_TOKEN}",
         "offset": "0",
         "file_size": str(file_size),
-        "Content-Type": "application/octet-stream",
-        "Content-Length": str(file_size),
+        "Content-Type": "video/mp4",
     }
 
-    print(f"📤 Uploading video to Instagram: {file_size / 1024 / 1024:.1f} MB")
-    with path.open("rb") as video_file:
-        response = requests.post(
-            upload_uri,
-            headers=headers,
-            data=video_file,
-            timeout=900,
-        )
+    started = time.monotonic()
+    try:
+        with path.open("rb") as video_file:
+            response = requests.post(
+                upload_uri,
+                headers=headers,
+                data=video_file,
+                timeout=900,
+            )
+    except requests.RequestException as exc:
+        print(f"❌ Network exception during binary upload: {type(exc).__name__}: {exc}")
+        raise
+
+    elapsed = time.monotonic() - started
+    print(f"⏱️ Binary upload HTTP time: {elapsed:.2f}s")
+    print(f"📥 Upload HTTP status: {response.status_code}")
+    print(f"📥 Upload response content-type: {response.headers.get('content-type')}")
+    print(f"📥 Upload response request-id: "
+          f"{response.headers.get('x-fb-request-id') or response.headers.get('x-fb-trace-id')}")
+    print(f"📥 Upload response length: {len(response.content)} bytes")
+    print(f"📥 Upload response body: {_response_details(response)}")
 
     if not response.ok:
         _raise_meta_error(response, "binary video upload")
@@ -256,30 +260,43 @@ def _upload_video(upload_uri, video_path):
     if result.get("success") is not True:
         raise RuntimeError(f"Instagram binary upload was not successful: {result}")
 
-    print("✅ Instagram video upload completed")
+    print("✅ Instagram video binary upload completed")
+    return result
+
+
+def _get_container_status(container_id):
+    url = f"{GRAPH_BASE}/{container_id}"
+    response = requests.get(
+        url,
+        params={
+            "fields": "id,status_code,status",
+            "access_token": INSTAGRAM_ACCESS_TOKEN,
+        },
+        timeout=60,
+    )
+    _raise_meta_error(response, "container status check")
+    return response.json()
 
 
 def _wait_until_ready(container_id, timeout_seconds=900, poll_seconds=10):
-    url = f"{GRAPH_BASE}/{container_id}"
+    print(f"\n⏳ Waiting for Instagram processing: {container_id}")
     deadline = time.monotonic() + timeout_seconds
+    poll = 0
 
     while time.monotonic() < deadline:
-        response = requests.get(
-            url,
-            params={
-                "fields": "status_code,status",
-                "access_token": INSTAGRAM_ACCESS_TOKEN,
-            },
-            timeout=60,
-        )
-        _raise_meta_error(response, "container status check")
-
-        data = response.json()
+        poll += 1
+        data = _get_container_status(container_id)
         status = data.get("status_code") or data.get("status")
-        print(f"⏳ Instagram processing status: {status}")
+
+        print(
+            f"⏳ Poll #{poll}: status_code={data.get('status_code')} "
+            f"status={data.get('status')} full={json.dumps(data, ensure_ascii=False)}"
+        )
 
         if status == "FINISHED":
-            return
+            print("✅ Instagram container processing FINISHED")
+            return data
+
         if status in {"ERROR", "EXPIRED"}:
             raise RuntimeError(
                 "Instagram video processing failed: "
@@ -296,6 +313,8 @@ def _wait_until_ready(container_id, timeout_seconds=900, poll_seconds=10):
 
 def _publish_container(container_id):
     url = f"{GRAPH_BASE}/{INSTAGRAM_BUSINESS_ACCOUNT_ID}/media_publish"
+    print(f"\n🚀 Publishing Instagram container: {container_id}")
+
     response = requests.post(
         url,
         data={
@@ -305,8 +324,9 @@ def _publish_container(container_id):
         timeout=60,
     )
 
-    if not response.ok:
-        _raise_meta_error(response, "Reel publishing")
+    print(f"📥 Publish HTTP status: {response.status_code}")
+    print(f"📥 Publish response: {_response_details(response)}")
+    _raise_meta_error(response, "Reel publishing")
 
     result = response.json()
     media_id = result.get("id")
@@ -320,163 +340,61 @@ def _publish_container(container_id):
     return result
 
 
-def _run_ffmpeg(command):
-    print("▶", " ".join(str(x) for x in command))
-    result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(
-            "FFmpeg failed while preparing the Instagram video: "
-            f"{result.stderr[-4000:]}"
-        )
-
-
-def _normalize_video_for_instagram(video_path):
-    """Create a conservative Instagram-compatible MP4 before every upload."""
-    source = Path(video_path)
-    if not source.is_file():
-        raise FileNotFoundError(f"Instagram video not found: {source}")
-
-    ffmpeg = shutil.which("ffmpeg")
-    ffprobe = shutil.which("ffprobe")
-    if not ffmpeg or not ffprobe:
-        raise RuntimeError("FFmpeg and ffprobe are required for Instagram upload normalization.")
-
-    normalized = source.with_name(f"{source.stem}_instagram_normalized.mp4")
-    print("🎞️ Normalizing video for Instagram upload...")
-
-    _run_ffmpeg([
-        ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
-        "-i", str(source),
-        "-map", "0:v:0",
-        "-map", "0:a:0?",
-        "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,"
-                "pad=720:1280:(ow-iw)/2:(oh-ih)/2",
-        "-r", "30",
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-profile:v", "high",
-        "-level", "4.0",
-        "-pix_fmt", "yuv420p",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-ar", "44100",
-        "-ac", "2",
-        "-movflags", "+faststart",
-        str(normalized),
-    ])
-
-    # Validate the actual resulting streams before giving the file to Meta.
-    probe = subprocess.run([
-        ffprobe, "-v", "error", "-show_streams", "-show_format",
-        "-of", "json", str(normalized)
-    ], check=True, capture_output=True, text=True)
-    data = json.loads(probe.stdout)
-    streams = data.get("streams", [])
-    video = next((x for x in streams if x.get("codec_type") == "video"), None)
-    audio = next((x for x in streams if x.get("codec_type") == "audio"), None)
-    if not video:
-        raise RuntimeError("Normalized Instagram video has no video stream.")
-    if video.get("codec_name") != "h264" or video.get("pix_fmt") != "yuv420p":
-        raise RuntimeError(f"Unexpected normalized video stream: {video}")
-    if audio and audio.get("codec_name") != "aac":
-        raise RuntimeError(f"Unexpected normalized audio stream: {audio}")
-
-    try:
-        duration = float((data.get("format") or {}).get("duration") or 0)
-    except (TypeError, ValueError):
-        duration = 0
-    if duration < 3 or duration > 900:
-        raise RuntimeError(
-            f"Instagram Reel duration must be between 3 seconds and 15 minutes; got {duration:.2f}s"
-        )
-
-    fps_text = video.get("avg_frame_rate") or video.get("r_frame_rate") or "0/1"
-    try:
-        n, d = fps_text.split("/")
-        fps = float(n) / float(d) if float(d) else 0
-    except (ValueError, ZeroDivisionError):
-        fps = 0
-    if fps < 23 or fps > 60:
-        raise RuntimeError(f"Unexpected normalized frame rate: {fps_text}")
-
-    if video.get("width") != 720 or video.get("height") != 1280:
-        raise RuntimeError(
-            f"Unexpected normalized dimensions: {video.get('width')}x{video.get('height')}"
-        )
-
-    size = normalized.stat().st_size
-    if size <= 0 or size > MAX_REEL_BYTES:
-        raise RuntimeError(f"Normalized Instagram video has invalid size: {size} bytes")
-
-    print(
-        f"✅ Instagram video ready: {video.get('width')}x{video.get('height')} "
-        f"H.264/{video.get('pix_fmt')} / "
-        f"{'AAC' if audio else 'no audio'} / {size / 1024 / 1024:.1f} MB"
-    )
-    return normalized
-
-
-def publish_video_to_instagram(video_path, caption):
+def publish_video_to_instagram(video_path, caption, max_attempts=3):
     """
-    Publish exactly ONE Reel, synchronously.
+    Upload exactly one Reel at a time.
 
-    The caller must wait for this function to return before starting another
-    video. Each retry creates a fresh Meta container; a failed container is
-    never reused.
+    Each retry creates a fresh container and uploads the same source file,
+    while detailed diagnostics identify whether the failure occurs during
+    container creation, binary upload, processing, or publishing.
     """
     _require_config()
-    _validate_account()
+    username = _validate_account()
+    print(f"🎯 Instagram target: @{username}")
+    print(f"🎯 Video: {video_path}")
 
-    normalized_path = _normalize_video_for_instagram(video_path)
-    try:
-        for attempt in range(1, INSTAGRAM_UPLOAD_ATTEMPTS + 1):
-            print(
-                f"\n📸 Instagram upload {attempt}/{INSTAGRAM_UPLOAD_ATTEMPTS} "
-                f"(ONE VIDEO AT A TIME)"
-            )
+    path = Path(video_path)
+    if not path.is_file():
+        raise FileNotFoundError(path)
 
-            if _check_publishing_limit():
-                print("⏭️ Instagram publishing limit is exhausted.")
-                return None
+    _video_diagnostics(path)
 
-            container_id, upload_uri = _create_resumable_container(caption)
-            if not container_id or not upload_uri:
-                return None
+    last_error = None
 
-            try:
-                _upload_video(upload_uri, normalized_path)
-                _wait_until_ready(
-                    container_id,
-                    timeout_seconds=INSTAGRAM_PROCESSING_TIMEOUT_SECONDS,
-                    poll_seconds=INSTAGRAM_PROCESSING_POLL_SECONDS,
-                )
-                result = _publish_container(container_id)
-                print("✅ Current video fully uploaded, processed and published.")
-                return result
-            except Exception as exc:
-                print(
-                    f"❌ Instagram attempt {attempt}/{INSTAGRAM_UPLOAD_ATTEMPTS} failed: {exc}"
-                )
-                if attempt >= INSTAGRAM_UPLOAD_ATTEMPTS:
-                    raise
-                # Rebuild the normalized MP4 before the next attempt. This avoids
-                # repeatedly sending the exact same potentially rejected binary.
+    for attempt in range(1, max_attempts + 1):
+        print("\n" + "=" * 90)
+        print(f"📸 INSTAGRAM REEL ATTEMPT {attempt}/{max_attempts}")
+        print("=" * 90)
+
+        container_id = None
+        try:
+            container_id, upload_uri = _create_resumable_container(caption, attempt)
+            _upload_video(upload_uri, path, attempt)
+            _wait_until_ready(container_id)
+            result = _publish_container(container_id)
+
+            print(f"🎉 Instagram Reel completed successfully on attempt {attempt}")
+            return result
+
+        except Exception as exc:
+            last_error = exc
+            print(f"❌ Instagram attempt {attempt}/{max_attempts} failed")
+            print(f"   error_type: {type(exc).__name__}")
+            print(f"   error: {exc}")
+            if container_id:
                 try:
-                    normalized_path.unlink(missing_ok=True)
-                    normalized_path = _normalize_video_for_instagram(video_path)
-                except Exception as normalize_exc:
-                    raise RuntimeError(
-                        f"Retry video normalization failed: {normalize_exc}"
-                    ) from normalize_exc
-                print(
-                    f"🔄 Waiting {INSTAGRAM_RETRY_DELAY_SECONDS}s before retrying "
-                    "with a NEW container and freshly normalized MP4..."
-                )
-                time.sleep(INSTAGRAM_RETRY_DELAY_SECONDS)
+                    status = _get_container_status(container_id)
+                    print(f"   container_after_failure: "
+                          f"{json.dumps(status, ensure_ascii=False)}")
+                except Exception as status_exc:
+                    print(f"   could not inspect failed container: {status_exc}")
 
-        raise RuntimeError("Instagram upload failed after all retry attempts.")
-    finally:
-        if normalized_path != Path(video_path):
-            normalized_path.unlink(missing_ok=True)
+            if attempt < max_attempts:
+                wait = 10 * attempt
+                print(f"🔄 Retrying with a NEW Instagram container in {wait}s...")
+                time.sleep(wait)
 
+    raise RuntimeError(
+        f"Instagram publishing failed after {max_attempts} attempts. "
+        f"Last error: {last_error}"
+    )
