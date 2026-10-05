@@ -232,7 +232,8 @@ def _upload_video(upload_uri, video_path):
         "Authorization": f"OAuth {INSTAGRAM_ACCESS_TOKEN}",
         "offset": "0",
         "file_size": str(file_size),
-        "Content-Type": "video/mp4",
+        "Content-Type": "application/octet-stream",
+        "Content-Length": str(file_size),
     }
 
     print(f"📤 Uploading video to Instagram: {file_size / 1024 / 1024:.1f} MB")
@@ -381,6 +382,29 @@ def _normalize_video_for_instagram(video_path):
     if audio and audio.get("codec_name") != "aac":
         raise RuntimeError(f"Unexpected normalized audio stream: {audio}")
 
+    try:
+        duration = float((data.get("format") or {}).get("duration") or 0)
+    except (TypeError, ValueError):
+        duration = 0
+    if duration < 3 or duration > 900:
+        raise RuntimeError(
+            f"Instagram Reel duration must be between 3 seconds and 15 minutes; got {duration:.2f}s"
+        )
+
+    fps_text = video.get("avg_frame_rate") or video.get("r_frame_rate") or "0/1"
+    try:
+        n, d = fps_text.split("/")
+        fps = float(n) / float(d) if float(d) else 0
+    except (ValueError, ZeroDivisionError):
+        fps = 0
+    if fps < 23 or fps > 60:
+        raise RuntimeError(f"Unexpected normalized frame rate: {fps_text}")
+
+    if video.get("width") != 720 or video.get("height") != 1280:
+        raise RuntimeError(
+            f"Unexpected normalized dimensions: {video.get('width')}x{video.get('height')}"
+        )
+
     size = normalized.stat().st_size
     if size <= 0 or size > MAX_REEL_BYTES:
         raise RuntimeError(f"Normalized Instagram video has invalid size: {size} bytes")
@@ -436,9 +460,18 @@ def publish_video_to_instagram(video_path, caption):
                 )
                 if attempt >= INSTAGRAM_UPLOAD_ATTEMPTS:
                     raise
+                # Rebuild the normalized MP4 before the next attempt. This avoids
+                # repeatedly sending the exact same potentially rejected binary.
+                try:
+                    normalized_path.unlink(missing_ok=True)
+                    normalized_path = _normalize_video_for_instagram(video_path)
+                except Exception as normalize_exc:
+                    raise RuntimeError(
+                        f"Retry video normalization failed: {normalize_exc}"
+                    ) from normalize_exc
                 print(
                     f"🔄 Waiting {INSTAGRAM_RETRY_DELAY_SECONDS}s before retrying "
-                    "with a NEW Instagram container..."
+                    "with a NEW container and freshly normalized MP4..."
                 )
                 time.sleep(INSTAGRAM_RETRY_DELAY_SECONDS)
 
