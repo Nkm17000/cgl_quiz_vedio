@@ -76,7 +76,7 @@ def _ffprobe_duration(path: str) -> float:
     return max(0.01, int(hours) * 3600 + int(minutes) * 60 + float(seconds))
 
 
-def generate_images(quiz, subject=None):
+def generate_images(quiz, subject=None, work_dir=None):
     images = []
     # Defensive guard: one logical quiz question produces countdown, question,
     # and answer slides, but the number of logical questions must stay fixed.
@@ -85,25 +85,27 @@ def generate_images(quiz, subject=None):
         raise ValueError(
             f"generate_images expected exactly {QUIZ_SIZE} questions, got {len(quiz)}"
         )
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    work_dir = Path(work_dir) if work_dir else OUTPUT_DIR
+    work_dir.mkdir(parents=True, exist_ok=True)
     for index, question in enumerate(quiz):
         for timer in (3, 2, 1):
-            path = OUTPUT_DIR / f"slide_{index}_{timer}.jpg"
+            path = work_dir / f"slide_{index}_{timer}.jpg"
             render_question(question, index, timer, path, subject=subject)
             images.append(str(path))
 
-        question_path = OUTPUT_DIR / f"question_{index}.jpg"
+        question_path = work_dir / f"question_{index}.jpg"
         render_question(question, index, None, question_path, subject=subject)
         images.append(str(question_path))
 
-        answer_path = OUTPUT_DIR / f"answer_{index}.jpg"
+        answer_path = work_dir / f"answer_{index}.jpg"
         render_answer(question, index, answer_path, subject=subject)
         images.append(str(answer_path))
     return images
 
 
-def _write_concat_file(slides):
-    concat_path = OUTPUT_DIR / "slides.txt"
+def _write_concat_file(slides, work_dir=None):
+    work_dir = Path(work_dir) if work_dir else OUTPUT_DIR
+    concat_path = work_dir / "slides.txt"
     with concat_path.open("w", encoding="utf-8") as file:
         for image, duration in slides:
             file.write(f"file {shlex.quote(str(Path(image).resolve()))}\n")
@@ -114,7 +116,8 @@ def _write_concat_file(slides):
     return concat_path
 
 
-def _build_timeline(quiz, subject=None):
+def _build_timeline(quiz, subject=None, work_dir=None):
+    work_dir = Path(work_dir) if work_dir else OUTPUT_DIR
     slides = []
     narration_events = []
     tick_events = []
@@ -128,7 +131,7 @@ def _build_timeline(quiz, subject=None):
     for index, question in enumerate(quiz):
         # Countdown: exactly three seconds total.
         for timer in (3, 2, 1):
-            slides.append((OUTPUT_DIR / f"slide_{index}_{timer}.jpg", countdown_step))
+            slides.append((work_dir / f"slide_{index}_{timer}.jpg", countdown_step))
             tick_events.append(timeline)
             timeline += countdown_step
 
@@ -139,10 +142,10 @@ def _build_timeline(quiz, subject=None):
 
         # The question stays visible until narration ends, then remains for
         # exactly three more seconds. No audio is sped up or stretched.
-        slides.append((OUTPUT_DIR / f"question_{index}.jpg", narration_duration + POST_AUDIO_WAIT_SECONDS))
+        slides.append((work_dir / f"question_{index}.jpg", narration_duration + POST_AUDIO_WAIT_SECONDS))
         timeline += narration_duration + POST_AUDIO_WAIT_SECONDS
 
-        answer_path = OUTPUT_DIR / f"answer_{index}.jpg"
+        answer_path = work_dir / f"answer_{index}.jpg"
         slides.append((answer_path, ANSWER_SLIDE_DURATION))
         correct_events.append(timeline)
         timeline += ANSWER_SLIDE_DURATION
@@ -150,9 +153,10 @@ def _build_timeline(quiz, subject=None):
     return slides, narration_events, tick_events, correct_events, timeline
 
 
-def _make_video(slides, duration):
-    concat = _write_concat_file(slides)
-    silent = OUTPUT_DIR / "video_silent.mp4"
+def _make_video(slides, duration, work_dir=None):
+    work_dir = Path(work_dir) if work_dir else OUTPUT_DIR
+    concat = _write_concat_file(slides, work_dir)
+    silent = work_dir / "video_silent.mp4"
     _run([
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-f", "concat", "-safe", "0", "-i", str(concat),
@@ -164,8 +168,9 @@ def _make_video(slides, duration):
     return silent
 
 
-def _make_audio(duration, narration_events, tick_events, correct_events):
+def _make_audio(duration, narration_events, tick_events, correct_events, work_dir=None):
     """Build one mixed audio track without opening tick/correct files once per event."""
+    work_dir = Path(work_dir) if work_dir else OUTPUT_DIR
     inputs = []
     filters = []
     mix_labels = []
@@ -226,7 +231,7 @@ def _make_audio(duration, narration_events, tick_events, correct_events):
         f"atrim=duration={duration:.6f},asetpts=N/SR/TB[mix]"
     )
 
-    audio_file = OUTPUT_DIR / "audio_mix.m4a"
+    audio_file = work_dir / "audio_mix.m4a"
     _run([
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         *inputs,
@@ -237,19 +242,20 @@ def _make_audio(duration, narration_events, tick_events, correct_events):
     return audio_file
 
 
-def create_video(quiz, output_file, subject=None):
+def create_video(quiz, output_file, subject=None, work_dir=None):
     if not quiz:
         raise ValueError("quiz is empty")
 
     output_file = Path(output_file)
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    work_dir = Path(work_dir) if work_dir else OUTPUT_DIR
+    work_dir.mkdir(parents=True, exist_ok=True)
 
     print("🎬 Building exact audio-driven timeline...")
-    slides, narration_events, tick_events, correct_events, duration = _build_timeline(quiz, subject=subject)
+    slides, narration_events, tick_events, correct_events, duration = _build_timeline(quiz, subject=subject, work_dir=work_dir)
     print(f"⏱️ Planned duration: {duration:.2f}s")
 
-    silent_video = _make_video(slides, duration)
-    audio_file = _make_audio(duration, narration_events, tick_events, correct_events)
+    silent_video = _make_video(slides, duration, work_dir=work_dir)
+    audio_file = _make_audio(duration, narration_events, tick_events, correct_events, work_dir=work_dir)
 
     if audio_file:
         _run([

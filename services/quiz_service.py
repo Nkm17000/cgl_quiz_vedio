@@ -19,6 +19,8 @@ SUBJECT_JOBS = [
     {"subject": "HISTORY", "file": "smart_learning_lab_50000_mixed_questions.json", "category": "History"},
     {"subject": "GEOGRAPHY", "file": "smart_learning_lab_50000_mixed_questions.json", "category": "Geography"},
     {"subject": "POLITY", "file": "smart_learning_lab_50000_mixed_questions.json", "category": "Polity"},
+    {"subject": "COMPUTER SCIENCE", "file": "computer_science_10000_bilingual_ssc_cgl_reshuffled.json"},
+    {"subject": "RAJASTHAN GK", "file": "rajasthan_gk_10000_bilingual_ssc_cgl_reshuffled.json"},
 ]
 
 
@@ -61,7 +63,7 @@ def _select_questions(data, job, counter):
 
 
 def fetch_quizzes():
-    """Return exactly eight independent 10-question subject quizzes."""
+    """Return exactly ten independent 10-question subject quizzes."""
     files = {p.name: p for p in Path(QUIZ_DIR).glob("*.json")}
     if not files:
         raise FileNotFoundError(f"No quiz JSON files found in {QUIZ_DIR}")

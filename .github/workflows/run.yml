@@ -52,7 +52,7 @@ jobs:
             echo '{"version": 3, "counters": {}, "last_run": {}}' > data/history/history.json
           fi
 
-      - name: Generate all 8 subject quiz videos
+      - name: Generate all 10 subject quiz videos
         run: python app.py
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -67,27 +67,28 @@ jobs:
           FPS: 30
           VIDEO_CRF: 30
           VIDEO_PRESET: ultrafast
-          TTS_CONCURRENCY: 6
+          TTS_CONCURRENCY: 12
+          VIDEO_WORKERS: 2
 
-      - name: Validate 8 generated videos
+      - name: Validate 10 generated videos
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           from pathlib import Path
           pending = json.loads(Path("output/pending_publish.json").read_text(encoding="utf-8"))
-          if not isinstance(pending, list) or len(pending) != 8:
-              raise SystemExit(f"Expected exactly 8 pending quizzes, got {len(pending) if isinstance(pending, list) else 'invalid'}")
+          if not isinstance(pending, list) or len(pending) != 10:
+              raise SystemExit(f"Expected exactly 10 pending quizzes, got {len(pending) if isinstance(pending, list) else 'invalid'}")
           for i, item in enumerate(pending, 1):
               if int(item.get("questions", 0)) != 10:
                   raise SystemExit(f"Subject {i} has {item.get('questions')} questions; expected 10")
               video = Path("output") / item["video_file"]
               if not video.is_file() or video.stat().st_size == 0:
                   raise SystemExit(f"Missing/empty video for subject {i}: {video}")
-              print(f"{i}/8: {item['subject']} | {item['video_file']} | {video.stat().st_size} bytes")
+              print(f"{i}/10: {item['subject']} | {item['video_file']} | {video.stat().st_size} bytes")
           PY
 
-      - name: Upload all 8 videos as artifacts
+      - name: Upload all 10 videos as artifacts
         uses: actions/upload-artifact@v4
         with:
           name: quiz-videos-${{ github.run_number }}
@@ -96,7 +97,7 @@ jobs:
             output/pending_publish.json
           retention-days: 7
 
-      - name: Publish all 8 subject videos to Instagram
+      - name: Publish all 10 subject videos to Instagram
         env:
           GH_TOKEN: ${{ github.token }}
           INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
@@ -116,7 +117,7 @@ jobs:
             exit 1
           fi
 
-          for INDEX in 0 1 2 3 4 5 6 7; do
+          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
             TAG="quiz-reel-${GITHUB_RUN_ID}-${INDEX}"
             VIDEO_FILE="$(INDEX="$INDEX" python - <<'PY'
           import json, os
@@ -132,7 +133,7 @@ jobs:
             fi
 
             echo "============================================================"
-            echo "Publishing subject index ${INDEX}: ${VIDEO_FILE}"
+            echo "Publishing subject index ${INDEX}/10: ${VIDEO_FILE}"
             echo "Release tag: ${TAG}"
 
             gh release create "$TAG" \
@@ -169,7 +170,7 @@ jobs:
             gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
           done
 
-          echo "✅ All 8 subject videos published successfully."
+          echo "✅ All 10 subject videos published successfully."
 
       - name: Commit quiz counters
         if: success()
@@ -187,7 +188,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          for INDEX in 0 1 2 3 4 5 6 7; do
+          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
             TAG="quiz-reel-${GITHUB_RUN_ID}-${INDEX}"
             gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag >/dev/null 2>&1 || true
           done

@@ -18,12 +18,12 @@ def main():
     pending_all = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
     if isinstance(pending_all, dict):
         pending_all = [pending_all]
-    if not isinstance(pending_all, list) or len(pending_all) != 8:
-        raise RuntimeError(f"Expected exactly 8 pending quizzes, got {len(pending_all) if isinstance(pending_all, list) else 'invalid'}")
+    if not isinstance(pending_all, list) or len(pending_all) != 10:
+        raise RuntimeError(f"Expected exactly 10 pending quizzes, got {len(pending_all) if isinstance(pending_all, list) else 'invalid'}")
 
     index = int(os.getenv("PENDING_INDEX", "0"))
     if index < 0 or index >= len(pending_all):
-        raise RuntimeError(f"PENDING_INDEX must be 0-7; got {index}")
+        raise RuntimeError(f"PENDING_INDEX must be 0-9; got {index}")
 
     pending = pending_all[index]
     video_url = os.getenv("INSTAGRAM_VIDEO_URL", "").strip()
@@ -36,7 +36,7 @@ def main():
         )
 
     print("=" * 80)
-    print(f"📤 Publishing subject {index + 1}/8 to Instagram")
+    print(f"📤 Publishing subject {index + 1}/10 to Instagram")
     print(f"📚 Subject: {pending['subject']}")
     print(f"📊 Questions: {pending['questions']}")
     print(f"📁 Source: {pending['source_file']}")
