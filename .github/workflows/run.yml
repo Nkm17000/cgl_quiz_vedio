@@ -6,7 +6,7 @@ on:
       - main
   workflow_dispatch:
   schedule:
-    # 02:00, 08:00, 14:00 and 20:00 UTC every day.
+    # Run 8 times per day.
     - cron: "0 0,3,6,9,12,15,18,21 * * *"
 
 permissions:
@@ -77,7 +77,7 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add data/history/history.json
-          git commit -m "Update quiz source counters" || exit 0
+          git commit -m "Update quiz subject history" || exit 0
           git pull --rebase origin main
           git push origin main
 

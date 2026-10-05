@@ -1,43 +1,53 @@
 import json
 from pathlib import Path
 
-# Keep history anchored to the project directory rather than the process cwd.
 BASE_DIR = Path(__file__).resolve().parents[1]
 MEMORY_FILE = BASE_DIR / "data" / "history" / "history.json"
-MEMORY_VERSION = 3
+MEMORY_VERSION = 4
 
 
 def _default_memory():
     return {
         "version": MEMORY_VERSION,
         "counters": {},
+        "subjects": {},
         "last_run": {},
     }
 
 
 def _normalize_memory(data):
-    """Normalize old/new history formats without losing valid per-source counters."""
     if not isinstance(data, dict):
         return _default_memory()
 
-    # New format.
+    normalized = _default_memory()
+
     counters = data.get("counters")
     if isinstance(counters, dict):
-        normalized = _default_memory()
-        normalized["counters"] = {
-            str(key): max(0, int(value or 0))
-            for key, value in counters.items()
-        }
-        last_run = data.get("last_run")
-        if isinstance(last_run, dict):
-            normalized["last_run"] = last_run
-        return normalized
+        for key, value in counters.items():
+            try:
+                normalized["counters"][str(key)] = max(0, int(value or 0))
+            except (TypeError, ValueError):
+                continue
 
-    # Old format had one global counter (usually from the old 4-question
-    # selection logic). It cannot safely be applied to independent 20-question
-    # source windows, so migrate to the new schema with fresh per-source
-    # counters. The old value is intentionally not reused.
-    return _default_memory()
+    subjects = data.get("subjects")
+    if isinstance(subjects, dict):
+        normalized["subjects"] = subjects
+
+    last_run = data.get("last_run")
+    if isinstance(last_run, dict):
+        normalized["last_run"] = last_run
+
+    # Migrate an existing source-counter history into subject tracking. The
+    # subject names are completed by quiz_service when the JSON sources load.
+    for source, counter in normalized["counters"].items():
+        entry = normalized["subjects"].setdefault(source, {})
+        entry.setdefault("next_question_index", counter)
+        entry.setdefault("quizzes_generated", 0)
+        entry.setdefault("last_quiz_number", 0)
+        entry.setdefault("last_questions", 10)
+
+    normalized["version"] = MEMORY_VERSION
+    return normalized
 
 
 def load_memory():
