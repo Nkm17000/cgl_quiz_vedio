@@ -49,6 +49,10 @@ def main():
     result = post_instagram(video_url, pending["caption"])
     print(f"✅ Instagram published successfully: {result}")
 
+    if os.getenv("DEFER_COUNTER_COMMIT", "false").strip().lower() == "true":
+        print("⏭️ Counter/history update deferred to the workflow finalize job.")
+        return
+
     new_counter = commit_quiz_counter(pending["source_file"], QUIZ_SIZE)
 
     history_file = ROOT / "data" / "history" / "history.json"

@@ -239,23 +239,29 @@ jobs:
 
 
 
-  # Instagram remains strictly sequential. This preserves the user's one-video-at-a-time
-
-  # requirement while the expensive generation work happens in parallel above.
-
+  # Instagram publishing runs up to 3 subjects concurrently.
+  # Each matrix job owns exactly one subject artifact and one temporary release.
   publish:
 
-    name: Publish Instagram Reels Sequentially
+    name: Publish Instagram Reel ${{ matrix.index }}
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 180
+    timeout-minutes: 45
 
     needs: generate
 
     if: ${{ needs.generate.result == 'success' }}
 
+    strategy:
 
+      fail-fast: false
+
+      max-parallel: 3
+
+      matrix:
+
+        index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     steps:
 
@@ -263,94 +269,91 @@ jobs:
 
         uses: actions/checkout@v4
 
-
-
       - name: Setup Python
 
         uses: actions/setup-python@v5
 
         with:
-
           python-version: ${{ env.PYTHON_VERSION }}
-
           cache: pip
-
           cache-dependency-path: requirements.txt
-
-
 
       - name: Install Python dependencies
 
         run: python -m pip install --disable-pip-version-check --prefer-binary -r requirements.txt
 
-
-
-      - name: Download all generated subject artifacts
+      - name: Download subject artifact
 
         uses: actions/download-artifact@v5
 
         with:
+          name: quiz-video-${{ matrix.index }}
+          path: artifacts/quiz-video-${{ matrix.index }}
 
-          pattern: quiz-video-*
+      - name: Verify subject artifact
 
-          path: artifacts
-
-          merge-multiple: false
-
-
-
-      - name: Verify all 10 subject artifacts
-
+        env:
+          SUBJECT_INDEX: ${{ matrix.index }}
         run: |
           set -euo pipefail
-          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
-            DIR="artifacts/quiz-video-${INDEX}"
-            test -f "$DIR/pending_publish.json" || { echo "::error::Missing pending_publish.json for subject index $INDEX"; exit 1; }
-            COUNT="$(find "$DIR" -maxdepth 1 -type f -name '*.mp4' | wc -l)"
-            if [ "$COUNT" -ne 1 ]; then
-              echo "::error::Expected exactly one MP4 for subject index $INDEX; found $COUNT"
-              exit 1
-            fi
-            echo "✅ Artifact ${INDEX}: $DIR"
-          done
+          DIR="artifacts/quiz-video-${SUBJECT_INDEX}"
+          test -f "$DIR/pending_publish.json" || { echo "::error::Missing pending_publish.json"; exit 1; }
+          COUNT="$(find "$DIR" -maxdepth 1 -type f -name '*.mp4' | wc -l)"
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected exactly one MP4; found $COUNT"
+            exit 1
+          fi
+          python - "$DIR/pending_publish.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if not isinstance(data, list) or len(data) != 1:
+              raise SystemExit("Expected exactly one pending publish record")
+          item = data[0]
+          if int(item.get("questions", 0)) != 10:
+              raise SystemExit(f"Expected 10 questions, got {item.get('questions')}")
+          video = Path(sys.argv[1]).parent / item["video_file"]
+          if not video.is_file() or video.stat().st_size <= 0:
+              raise SystemExit(f"Missing/empty video: {video}")
+          print(f"Subject: {item['subject']}")
+          print(f"Video: {video} ({video.stat().st_size} bytes)")
+          PY
+
       - name: Verify Instagram secrets
 
         env:
-
           INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
-
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
-
         run: |
           set -euo pipefail
           if [ -z "$INSTAGRAM_BUSINESS_ACCOUNT_ID" ] || [ -z "$INSTAGRAM_ACCESS_TOKEN" ]; then
             echo "::error::Instagram secrets are missing."
             exit 1
           fi
-      - name: Publish all 10 videos one at a time
+
+      - name: Publish one Instagram Reel
 
         env:
-
           GH_TOKEN: ${{ github.token }}
-
           INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
-
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
-
           META_GRAPH_VERSION: v24.0
-
+          SUBJECT_INDEX: ${{ matrix.index }}
+          DEFER_COUNTER_COMMIT: "true"
         run: |
           set -euo pipefail
+
           VISIBILITY="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.visibility')"
           if [ "$VISIBILITY" != "public" ]; then
             echo "::error::Instagram automatic publishing requires this GitHub repository to be public."
             exit 1
           fi
-          mkdir -p output
-          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
-            DIR="artifacts/quiz-video-${INDEX}"
-            TAG="quiz-reel-${GITHUB_RUN_ID}-${INDEX}"
-            VIDEO_FILE="$(python - "$DIR/pending_publish.json" <<'PY'
+
+          DIR="artifacts/quiz-video-${SUBJECT_INDEX}"
+          TAG="quiz-reel-${GITHUB_RUN_ID}-${SUBJECT_INDEX}"
+
+          VIDEO_FILE="$(python - "$DIR/pending_publish.json" <<'PY'
           import json
           import sys
           from pathlib import Path
@@ -359,54 +362,154 @@ jobs:
               raise SystemExit("Expected one pending publish record")
           print(data[0]["video_file"])
           PY
-            )"
-            SUBJECT="$(python - "$DIR/pending_publish.json" <<'PY'
+          )"
+
+          SUBJECT="$(python - "$DIR/pending_publish.json" <<'PY'
           import json
           import sys
           from pathlib import Path
           data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           print(data[0]["subject"])
           PY
-            )"
-            cp "$DIR/$VIDEO_FILE" "output/$VIDEO_FILE"
-            cp "$DIR/pending_publish.json" "output/pending_publish.json"
-            echo "============================================================"
-            echo "📤 Publishing ${INDEX}/10: ${SUBJECT}"
-            echo "📁 ${VIDEO_FILE}"
-            echo "🏷️ ${TAG}"
-            echo "============================================================"
-            gh release create "$TAG" \
-              "$DIR/$VIDEO_FILE" \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
-              --title "Quiz Reel ${GITHUB_RUN_NUMBER}-${INDEX}" \
-              --notes "Temporary public MP4 used for Instagram Reel publishing."
-            VIDEO_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${VIDEO_FILE}"
-            echo "🔗 Public video URL: ${VIDEO_URL}"
-            AVAILABLE=0
-            for ATTEMPT in $(seq 1 12); do
-              HTTP_CODE="$(curl -L -s -o /dev/null -w '%{http_code}' "$VIDEO_URL" || true)"
-              echo "🌐 Release asset check ${ATTEMPT}/12: HTTP ${HTTP_CODE}"
-              if [ "$HTTP_CODE" = "200" ]; then
-                AVAILABLE=1
-                break
-              fi
-              sleep 5
-            done
-            if [ "$AVAILABLE" -ne 1 ]; then
-              echo "::error::GitHub release asset is not publicly downloadable: ${VIDEO_URL}"
-              exit 1
-            fi
-            INSTAGRAM_VIDEO_URL="$VIDEO_URL" \
-            PENDING_INDEX="0" \
-            python publish.py
-            echo "🧹 Cleaning temporary release ${TAG}"
-            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
-          done
-          echo "✅ All 10 subject videos published successfully, one at a time."
-      - name: Commit quiz counters and publish history
+          )"
 
-        if: success()
+          mkdir -p output
+          cp "$DIR/$VIDEO_FILE" "output/$VIDEO_FILE"
+          cp "$DIR/pending_publish.json" "output/pending_publish.json"
+
+          echo "============================================================"
+          echo "📤 Publishing ${SUBJECT_INDEX}/10: ${SUBJECT}"
+          echo "📁 ${VIDEO_FILE}"
+          echo "🏷️ ${TAG}"
+          echo "============================================================"
+
+          gh release create "$TAG" \
+            "$DIR/$VIDEO_FILE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Quiz Reel ${GITHUB_RUN_NUMBER}-${SUBJECT_INDEX}" \
+            --notes "Temporary public MP4 used for Instagram Reel publishing."
+
+          VIDEO_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${VIDEO_FILE}"
+          echo "🔗 Public video URL: ${VIDEO_URL}"
+
+          AVAILABLE=0
+          for ATTEMPT in $(seq 1 12); do
+            HTTP_CODE="$(curl -L -s -o /dev/null -w '%{http_code}' "$VIDEO_URL" || true)"
+            echo "🌐 Release asset check ${ATTEMPT}/12: HTTP ${HTTP_CODE}"
+            if [ "$HTTP_CODE" = "200" ]; then
+              AVAILABLE=1
+              break
+            fi
+            sleep 5
+          done
+
+          if [ "$AVAILABLE" -ne 1 ]; then
+            echo "::error::GitHub release asset is not publicly downloadable: ${VIDEO_URL}"
+            exit 1
+          fi
+
+          INSTAGRAM_VIDEO_URL="$VIDEO_URL" \
+          PENDING_INDEX="$SUBJECT_INDEX" \
+          python publish.py
+
+          echo "🧹 Cleaning temporary release ${TAG}"
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          echo "✅ ${SUBJECT} published successfully."
+
+      - name: Cleanup temporary release if publishing failed
+
+        if: ${{ failure() }}
+
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBJECT_INDEX: ${{ matrix.index }}
+        run: |
+          set +e
+          TAG="quiz-reel-${GITHUB_RUN_ID}-${SUBJECT_INDEX}"
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag >/dev/null 2>&1 || true
+
+  # Counter/history updates happen once, after all 10 parallel publisher jobs succeed.
+  finalize:
+
+    name: Finalize quiz counters and history
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 15
+
+    needs: publish
+
+    if: ${{ needs.publish.result == 'success' }}
+
+    steps:
+
+      - name: Checkout
+
+        uses: actions/checkout@v4
+
+      - name: Download all generated subject artifacts
+
+        uses: actions/download-artifact@v5
+
+        with:
+          pattern: quiz-video-*
+          path: artifacts
+          merge-multiple: false
+
+      - name: Commit counters and publish history
+
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from services.quiz_service import QUIZ_SIZE, commit_quiz_counter
+
+          root = Path.cwd()
+          history_file = root / "data" / "history" / "history.json"
+          history = {}
+          if history_file.exists():
+              try:
+                  history = json.loads(history_file.read_text(encoding="utf-8"))
+              except Exception:
+                  history = {}
+
+          last_run = history.setdefault("last_run", {})
+          processed = 0
+
+          for index in range(10):
+              pending_file = root / "artifacts" / f"quiz-video-{index}" / "pending_publish.json"
+              data = json.loads(pending_file.read_text(encoding="utf-8"))
+              if not isinstance(data, list) or len(data) != 1:
+                  raise SystemExit(f"Invalid pending data for subject index {index}")
+
+              pending = data[0]
+              if int(pending.get("questions", 0)) != QUIZ_SIZE:
+                  raise SystemExit(
+                      f"Subject {pending.get('subject')}: expected {QUIZ_SIZE} questions, "
+                      f"got {pending.get('questions')}"
+                  )
+
+              new_counter = commit_quiz_counter(pending["source_file"], QUIZ_SIZE)
+              last_run[pending["source_file"]] = {
+                  "subject": pending["subject"],
+                  "quiz_number": pending["quiz_number"],
+                  "source_counter_after": new_counter,
+                  "platform": "instagram",
+                  "questions": QUIZ_SIZE,
+              }
+              processed += 1
+
+          history_file.parent.mkdir(parents=True, exist_ok=True)
+          history_file.write_text(
+              json.dumps(history, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(f"✅ Finalized {processed}/10 published quizzes.")
+          PY
+
+      - name: Push updated counters and history
 
         run: |
           set -euo pipefail
@@ -420,17 +523,3 @@ jobs:
           git commit -m "Update quiz source counters"
           git pull --rebase origin main
           git push origin main
-      - name: Cleanup temporary releases if publishing failed
-
-        if: ${{ failure() }}
-
-        env:
-
-          GH_TOKEN: ${{ github.token }}
-
-        run: |
-          set +e
-          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
-            TAG="quiz-reel-${GITHUB_RUN_ID}-${INDEX}"
-            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag >/dev/null 2>&1 || true
-          done
