@@ -1,85 +1,85 @@
 {
   "version": 3,
   "counters": {
-    "smart_learning_lab_english_grammar_10000_questions_reshuffled.json": 70,
-    "smart_learning_lab_general_science_10000_questions_reshuffled.json": 70,
-    "smart_learning_lab_gk_10000_questions_reshuffled.json": 70,
-    "smart_learning_lab_math_10000_questions_reshuffled.json": 70,
-    "smart_learning_lab_reasoning_10000_questions_reshuffled.json": 70,
+    "smart_learning_lab_english_grammar_10000_questions_reshuffled.json": 80,
+    "smart_learning_lab_general_science_10000_questions_reshuffled.json": 80,
+    "smart_learning_lab_gk_10000_questions_reshuffled.json": 80,
+    "smart_learning_lab_math_10000_questions_reshuffled.json": 80,
+    "smart_learning_lab_reasoning_10000_questions_reshuffled.json": 80,
     "smart_learning_lab_50000_mixed_questions.json::History": 70,
     "smart_learning_lab_50000_mixed_questions.json::Geography": 70,
     "smart_learning_lab_50000_mixed_questions.json::Polity": 70,
-    "computer_science_10000_bilingual_ssc_cgl_reshuffled.json": 70,
-    "rajasthan_gk_10000_bilingual_ssc_cgl_reshuffled.json": 70
+    "computer_science_10000_bilingual_ssc_cgl_reshuffled.json": 80,
+    "rajasthan_gk_10000_bilingual_ssc_cgl_reshuffled.json": 80
   },
   "last_run": {
     "smart_learning_lab_english_grammar_10000_questions_reshuffled.json": {
       "subject": "ENGLISH",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     },
     "smart_learning_lab_general_science_10000_questions_reshuffled.json": {
       "subject": "GENERAL SCIENCE",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     },
     "smart_learning_lab_gk_10000_questions_reshuffled.json": {
       "subject": "GK",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     },
     "smart_learning_lab_math_10000_questions_reshuffled.json": {
       "subject": "MATH",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     },
     "smart_learning_lab_reasoning_10000_questions_reshuffled.json": {
       "subject": "REASONING",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     },
     "smart_learning_lab_50000_mixed_questions.json::History": {
       "subject": "HISTORY",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     },
     "smart_learning_lab_50000_mixed_questions.json::Geography": {
       "subject": "GEOGRAPHY",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     },
     "smart_learning_lab_50000_mixed_questions.json::Polity": {
       "subject": "POLITY",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     },
     "computer_science_10000_bilingual_ssc_cgl_reshuffled.json": {
       "subject": "COMPUTER SCIENCE",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     },
     "rajasthan_gk_10000_bilingual_ssc_cgl_reshuffled.json": {
       "subject": "RAJASTHAN GK",
-      "quiz_number": 7,
-      "source_counter_after": 70,
+      "quiz_number": 8,
+      "source_counter_after": 80,
       "platform": "instagram",
       "questions": 10
     }
