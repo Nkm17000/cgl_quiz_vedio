@@ -39,10 +39,6 @@ PAGE_URL = os.getenv("PAGE_URL", "https://smartlearninglab-react.pages.dev").str
 META_GRAPH_VERSION = os.getenv("META_GRAPH_VERSION", "v23.0").strip()
 INSTAGRAM_BUSINESS_ACCOUNT_ID = (os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID") or "").strip()
 INSTAGRAM_ACCESS_TOKEN = (os.getenv("INSTAGRAM_ACCESS_TOKEN") or "").strip()
-MIXED_QUIZ_FILE = os.getenv(
-    "MIXED_QUIZ_FILE",
-    "smart_learning_lab_50000_mixed_questions.json",
-).strip()
 
 # Keep TTS generation concurrent so a 20-question quiz does not wait for
 # 20 network requests one after another.

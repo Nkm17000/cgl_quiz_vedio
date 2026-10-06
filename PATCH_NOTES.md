@@ -1,9 +1,11 @@
 # Instagram Quiz Publishing Behavior
 
-- Manual `workflow_dispatch` or a normal `push`: exactly 1 quiz video.
-- Scheduled workflow: exactly 6 videos per run when the 6 JSON sources are present: English, General Science, GK, Math, Reasoning, and Mixed.
-- Each source produces one 5-question quiz per scheduled run.
+- The project has 10 independent subject question banks: English, General Science, GK, Math, Reasoning, History, Geography, Polity, Computer Science, and Rajasthan GK.
+- Every question bank is physically shuffled and contains its own independent sequence.
+- Each generated quiz contains exactly 10 questions.
+- Generation runs all 10 subjects in parallel with a maximum of 5 jobs at once.
+- Instagram publishing is limited to one video at a time.
 - Source counters advance only after successful Instagram publishing.
-- If Meta returns the Content Publishing API media-creation limit, the run stops immediately and saves a 24-hour cooldown; the generated MP4 is retained.
-- Scheduled runs continue to the next subject when a non-limit source error occurs.
-- Quiz counters are committed with `if: always()` so successful uploads earlier in a partially failed run are not lost.
+- If some Instagram publishers fail, only successfully published subjects advance their counters/history.
+- The old mixed History/Geography/Polity JSON is no longer used.
+- The Instagram publishing flow uses a temporary public GitHub Release asset as the Reel `video_url`.

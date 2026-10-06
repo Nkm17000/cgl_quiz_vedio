@@ -7,18 +7,18 @@ from utils.memory import load_memory, save_memory
 
 QUIZ_SIZE = 10
 
-# Eight subject runs per push/manual execution. Five use the dedicated banks
-# shipped with this repository; the remaining three are selected from the
-# mixed 50,000-question bank by category.
+# Ten subject runs per push/manual execution. Every subject has its own
+# dedicated question bank so counters and question windows remain completely
+# independent.
 SUBJECT_JOBS = [
     {"subject": "ENGLISH", "file": "smart_learning_lab_english_grammar_10000_questions_reshuffled.json"},
     {"subject": "GENERAL SCIENCE", "file": "smart_learning_lab_general_science_10000_questions_reshuffled.json"},
     {"subject": "GK", "file": "smart_learning_lab_gk_10000_questions_reshuffled.json"},
     {"subject": "MATH", "file": "smart_learning_lab_math_10000_questions_reshuffled.json"},
     {"subject": "REASONING", "file": "smart_learning_lab_reasoning_10000_questions_reshuffled.json"},
-    {"subject": "HISTORY", "file": "smart_learning_lab_50000_mixed_questions.json", "category": "History"},
-    {"subject": "GEOGRAPHY", "file": "smart_learning_lab_50000_mixed_questions.json", "category": "Geography"},
-    {"subject": "POLITY", "file": "smart_learning_lab_50000_mixed_questions.json", "category": "Polity"},
+    {"subject": "HISTORY", "file": "smart_learning_lab_history_questions_reshuffled.json"},
+    {"subject": "GEOGRAPHY", "file": "smart_learning_lab_geography_questions_reshuffled.json"},
+    {"subject": "POLITY", "file": "smart_learning_lab_polity_questions_reshuffled.json"},
     {"subject": "COMPUTER SCIENCE", "file": "computer_science_10000_bilingual_ssc_cgl_reshuffled.json"},
     {"subject": "RAJASTHAN GK", "file": "rajasthan_gk_10000_bilingual_ssc_cgl_reshuffled.json"},
 ]
@@ -32,16 +32,8 @@ def _load_json(path: Path):
     return data
 
 
-def _matches_category(item, category):
-    return str(item.get("category", "")).strip().casefold() == category.casefold()
-
-
 def _select_questions(data, job, counter):
-    category = job.get("category")
-    if category:
-        pool = [item for item in data if _matches_category(item, category)]
-    else:
-        pool = data
+    pool = data
 
     if len(pool) < QUIZ_SIZE:
         raise ValueError(
@@ -89,7 +81,7 @@ def fetch_quizzes(subject_index=None):
             )
 
         data = _load_json(path)
-        source_key = path.name + (f"::{job['category']}" if job.get("category") else "")
+        source_key = path.name
         counter = int(counters.get(source_key, 0) or 0)
         batch, counter, pool_size = _select_questions(data, job, counter)
 
@@ -98,7 +90,6 @@ def fetch_quizzes(subject_index=None):
             "subject": job["subject"],
             "source_file": source_key,
             "source_path": path.name,
-            "category": job.get("category"),
             "quiz_number": (counter // QUIZ_SIZE) + 1,
             "quiz_count_for_source": max(1, pool_size // QUIZ_SIZE),
             "counter": counter,

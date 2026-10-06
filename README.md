@@ -1,13 +1,13 @@
 # Smart Learning Lab — Instagram Quiz Reel Generator
 
-Generates and publishes exactly **one Instagram Reel per workflow run**, containing exactly **10 questions**.
+Generates and publishes **10 subject Instagram Reels per scheduled workflow run**, with exactly **10 questions per Reel**, containing exactly **10 questions**.
 
 ## Pipeline
 
 ```text
-Mixed JSON question bank
+10 independent subject JSON question banks
         ↓
-10-question selector
+10-question subject selector
         ↓
 Shuffle
         ↓
@@ -64,7 +64,7 @@ The workflow supports:
 - Push to `main`
 - Scheduled runs at 02:00, 08:00, 14:00 and 20:00 UTC
 
-Every run generates **one video with exactly 10 questions**.
+Scheduled runs generate one video per subject (10 subject videos total), with exactly 10 questions per video. Instagram publishing is performed one video at a time.
 
 ## Local test
 
