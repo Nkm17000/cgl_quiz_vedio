@@ -635,6 +635,156 @@ def _draw_explanation(draw, exp_en, exp_hi, top, bottom, theme):
         )
 
 
+
+def _draw_finger_icon(draw, x, y, scale=1.0, fill=(255, 224, 189, 255), outline=(80, 48, 35, 255)):
+    """Draw a friendly pointing-finger illustration for the final CTA slide."""
+    s = float(scale)
+    # Finger points up/right toward the Like & Subscribe message.
+    points = [
+        (x + 32*s, y + 142*s),
+        (x + 30*s, y + 68*s),
+        (x + 44*s, y + 24*s),
+        (x + 61*s, y + 12*s),
+        (x + 77*s, y + 19*s),
+        (x + 81*s, y + 38*s),
+        (x + 77*s, y + 67*s),
+        (x + 111*s, y + 56*s),
+        (x + 127*s, y + 63*s),
+        (x + 131*s, y + 77*s),
+        (x + 125*s, y + 91*s),
+        (x + 88*s, y + 105*s),
+        (x + 86*s, y + 139*s),
+    ]
+    draw.polygon(points, fill=fill, outline=outline)
+    # Thumb.
+    draw.ellipse(
+        (x + 70*s, y + 82*s, x + 116*s, y + 125*s),
+        fill=fill,
+        outline=outline,
+        width=max(1, int(3*s)),
+    )
+    # Small cuff/sleeve.
+    cuff = [
+        (x + 27*s, y + 132*s),
+        (x + 86*s, y + 130*s),
+        (x + 103*s, y + 174*s),
+        (x + 17*s, y + 174*s),
+    ]
+    draw.polygon(cuff, fill=(255, 255, 255, 245), outline=outline)
+    # Fingernail highlight.
+    draw.rounded_rectangle(
+        (x + 51*s, y + 22*s, x + 70*s, y + 48*s),
+        radius=max(2, int(7*s)),
+        fill=(255, 244, 235, 255),
+        outline=(170, 125, 105, 255),
+        width=max(1, int(2*s)),
+    )
+
+
+def render_cta(subject=None, quiz_number=None, output=None):
+    """Render the final Like/Subscribe/website call-to-action slide."""
+    from config import PAGE_URL
+
+    theme = _theme(subject)
+    image = _background(subject)
+    draw = ImageDraw.Draw(image, "RGBA")
+
+    _draw_quiz_header(draw, subject, quiz_number, theme)
+
+    # Main CTA panel.
+    panel = (42, 300, VIDEO_WIDTH - 42, 965)
+    draw.rounded_rectangle(
+        panel,
+        radius=34,
+        fill=theme["card"] + (238,),
+        outline=theme["accent2"] + (245,),
+        width=4,
+    )
+
+    _draw_fit(
+        draw,
+        "LIKE & SUBSCRIBE",
+        (72, 355, VIDEO_WIDTH - 72, 455),
+        theme["accent2"] + (255,),
+        54,
+        32,
+        bold=True,
+        gap=4,
+        align="center",
+    )
+
+    _draw_fit(
+        draw,
+        "For more daily quizzes & exam preparation",
+        (70, 470, VIDEO_WIDTH - 70, 575),
+        theme["text"] + (255,),
+        31,
+        21,
+        bold=True,
+        gap=3,
+        align="center",
+    )
+
+    _draw_fit(
+        draw,
+        "Visit Smart Learning Lab",
+        (70, 600, VIDEO_WIDTH - 70, 675),
+        theme["muted"] + (255,),
+        31,
+        22,
+        bold=True,
+        gap=2,
+        align="center",
+    )
+
+    # Keep the actual React landing-page URL visible on the final frame.
+    _draw_fit(
+        draw,
+        PAGE_URL,
+        (65, 690, VIDEO_WIDTH - 65, 770),
+        theme["accent2"] + (255,),
+        28,
+        16,
+        bold=True,
+        gap=2,
+        align="center",
+    )
+
+    # Bottom-left finger image/illustration pointing toward the CTA.
+    _draw_finger_icon(draw, 38, 1005, scale=1.15)
+
+    _draw_fit(
+        draw,
+        "Tap Like • Subscribe • Follow",
+        (205, 1015, VIDEO_WIDTH - 45, 1110),
+        theme["text"] + (255,),
+        29,
+        18,
+        bold=True,
+        gap=2,
+        align="left",
+    )
+
+    _draw_fit(
+        draw,
+        "SMART LEARNING LAB",
+        (80, 1130, VIDEO_WIDTH - 80, 1200),
+        theme["footer"] + (255,),
+        26,
+        18,
+        bold=True,
+        gap=2,
+        align="center",
+    )
+
+    if output is not None:
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        image.convert("RGB").save(output, quality=95, optimize=True)
+        return str(output)
+    return image
+
+
 def render_answer(q, index, output, subject=None, quiz_number=None):
     theme = _theme(subject)
     image = _background(subject)

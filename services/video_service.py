@@ -23,7 +23,7 @@ from config import (
     VIDEO_WIDTH,
 )
 from services.audio_service import ensure_question_audio_batch
-from services.renderer import render_answer, render_question
+from services.renderer import render_answer, render_cta, render_question
 
 
 def _run(command):
@@ -100,6 +100,11 @@ def generate_images(quiz, subject=None, quiz_number=None, work_dir=None):
         answer_path = work_dir / f"answer_{index}.jpg"
         render_answer(question, index, answer_path, subject=subject, quiz_number=quiz_number)
         images.append(str(answer_path))
+
+    # One final CTA frame is always the last frame of the reel.
+    cta_path = work_dir / "final_cta.jpg"
+    render_cta(subject=subject, quiz_number=quiz_number, output=cta_path)
+    images.append(str(cta_path))
     return images
 
 
@@ -149,6 +154,14 @@ def _build_timeline(quiz, subject=None, quiz_number=None, work_dir=None):
         slides.append((answer_path, ANSWER_SLIDE_DURATION))
         correct_events.append(timeline)
         timeline += ANSWER_SLIDE_DURATION
+
+    # Keep the Like/Subscribe/website CTA as the final video frame.
+    cta_path = work_dir / "final_cta.jpg"
+    if not cta_path.is_file():
+        render_cta(subject=subject, quiz_number=quiz_number, output=cta_path)
+    cta_duration = 5.0
+    slides.append((cta_path, cta_duration))
+    timeline += cta_duration
 
     return slides, narration_events, tick_events, correct_events, timeline
 
