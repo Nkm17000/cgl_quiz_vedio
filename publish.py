@@ -18,14 +18,16 @@ def main():
     pending_all = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
     if isinstance(pending_all, dict):
         pending_all = [pending_all]
-    if not isinstance(pending_all, list) or len(pending_all) != 10:
-        raise RuntimeError(f"Expected exactly 10 pending quizzes, got {len(pending_all) if isinstance(pending_all, list) else 'invalid'}")
+    # Each matrix subject artifact contains exactly ONE pending quiz.
+    # The publish workflow downloads and publishes these artifacts sequentially.
+    if not isinstance(pending_all, list) or len(pending_all) != 1:
+        raise RuntimeError(
+            f"Expected exactly 1 pending quiz, got "
+            f"{len(pending_all) if isinstance(pending_all, list) else 'invalid'}"
+        )
 
+    pending = pending_all[0]
     index = int(os.getenv("PENDING_INDEX", "0"))
-    if index < 0 or index >= len(pending_all):
-        raise RuntimeError(f"PENDING_INDEX must be 0-9; got {index}")
-
-    pending = pending_all[index]
     video_url = os.getenv("INSTAGRAM_VIDEO_URL", "").strip()
     if not video_url:
         raise RuntimeError("INSTAGRAM_VIDEO_URL is missing.")
