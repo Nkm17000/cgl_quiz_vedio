@@ -14,7 +14,7 @@ on:
 
   schedule:
 
-    - cron: "17 0,3,6,9,12,15,18,21 * * *"
+    - cron: "0 0,3,6,9,12,15,18,21 * * *"
 
 
 
@@ -506,15 +506,15 @@ jobs:
 
 
 
-            gh release create "$TAG" \\
+            gh release create "$TAG" \
 
-              "$DIR/$VIDEO_FILE" \\
+              "$DIR/$VIDEO_FILE" \
 
-              --repo "$GITHUB_REPOSITORY" \\
+              --repo "$GITHUB_REPOSITORY" \
 
-              --target "$GITHUB_SHA" \\
+              --target "$GITHUB_SHA" \
 
-              --title "Quiz Reel ${GITHUB_RUN_NUMBER}-${INDEX}" \\
+              --title "Quiz Reel ${GITHUB_RUN_NUMBER}-${INDEX}" \
 
               --notes "Temporary public MP4 used for Instagram Reel publishing."
 
@@ -558,9 +558,9 @@ jobs:
 
 
 
-            INSTAGRAM_VIDEO_URL="$VIDEO_URL" \\
+            INSTAGRAM_VIDEO_URL="$VIDEO_URL" \
 
-            PENDING_INDEX="0" \\
+            PENDING_INDEX="0" \
 
             python publish.py
 
