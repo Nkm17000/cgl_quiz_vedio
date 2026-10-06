@@ -448,6 +448,25 @@ jobs:
 
         uses: actions/checkout@v4
 
+      - name: Setup Python
+
+        uses: actions/setup-python@v5
+
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python dependencies
+
+        run: python -m pip install --disable-pip-version-check --prefer-binary -r requirements.txt
+
+      - name: Verify Python dependencies
+
+        run: |
+          set -euo pipefail
+          python -c "import dotenv, requests; print('Python dependencies OK')"
+
       - name: Download all generated subject artifacts
 
         uses: actions/download-artifact@v5
