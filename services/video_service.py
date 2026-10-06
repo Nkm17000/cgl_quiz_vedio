@@ -76,7 +76,7 @@ def _ffprobe_duration(path: str) -> float:
     return max(0.01, int(hours) * 3600 + int(minutes) * 60 + float(seconds))
 
 
-def generate_images(quiz, subject=None, work_dir=None):
+def generate_images(quiz, subject=None, quiz_number=None, work_dir=None):
     images = []
     # Defensive guard: one logical quiz question produces countdown, question,
     # and answer slides, but the number of logical questions must stay fixed.
@@ -90,15 +90,15 @@ def generate_images(quiz, subject=None, work_dir=None):
     for index, question in enumerate(quiz):
         for timer in (3, 2, 1):
             path = work_dir / f"slide_{index}_{timer}.jpg"
-            render_question(question, index, timer, path, subject=subject)
+            render_question(question, index, timer, path, subject=subject, quiz_number=quiz_number)
             images.append(str(path))
 
         question_path = work_dir / f"question_{index}.jpg"
-        render_question(question, index, None, question_path, subject=subject)
+        render_question(question, index, None, question_path, subject=subject, quiz_number=quiz_number)
         images.append(str(question_path))
 
         answer_path = work_dir / f"answer_{index}.jpg"
-        render_answer(question, index, answer_path, subject=subject)
+        render_answer(question, index, answer_path, subject=subject, quiz_number=quiz_number)
         images.append(str(answer_path))
     return images
 
@@ -116,7 +116,7 @@ def _write_concat_file(slides, work_dir=None):
     return concat_path
 
 
-def _build_timeline(quiz, subject=None, work_dir=None):
+def _build_timeline(quiz, subject=None, quiz_number=None, work_dir=None):
     work_dir = Path(work_dir) if work_dir else OUTPUT_DIR
     slides = []
     narration_events = []
@@ -242,7 +242,7 @@ def _make_audio(duration, narration_events, tick_events, correct_events, work_di
     return audio_file
 
 
-def create_video(quiz, output_file, subject=None, work_dir=None):
+def create_video(quiz, output_file, subject=None, quiz_number=None, work_dir=None):
     if not quiz:
         raise ValueError("quiz is empty")
 
@@ -251,7 +251,7 @@ def create_video(quiz, output_file, subject=None, work_dir=None):
     work_dir.mkdir(parents=True, exist_ok=True)
 
     print("🎬 Building exact audio-driven timeline...")
-    slides, narration_events, tick_events, correct_events, duration = _build_timeline(quiz, subject=subject, work_dir=work_dir)
+    slides, narration_events, tick_events, correct_events, duration = _build_timeline(quiz, subject=subject, quiz_number=quiz_number, work_dir=work_dir)
     print(f"⏱️ Planned duration: {duration:.2f}s")
 
     silent_video = _make_video(slides, duration, work_dir=work_dir)

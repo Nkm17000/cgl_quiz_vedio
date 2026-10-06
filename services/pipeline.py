@@ -58,10 +58,10 @@ def _generate_one(item, work_dir: Path):
     try:
         work_dir.mkdir(parents=True, exist_ok=True)
         print("🖼️ Rendering slides...")
-        images = generate_images(quiz, subject=item["subject"], work_dir=work_dir)
+        images = generate_images(quiz, subject=item["subject"], quiz_number=item["quiz_number"], work_dir=work_dir)
 
         print("🎬 Creating video...")
-        create_video(quiz, output_video, subject=item["subject"], work_dir=work_dir)
+        create_video(quiz, output_video, subject=item["subject"], quiz_number=item["quiz_number"], work_dir=work_dir)
 
         if not output_video.is_file() or output_video.stat().st_size <= 0:
             raise RuntimeError(f"Video file was not created correctly: {output_video}")

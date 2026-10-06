@@ -342,6 +342,35 @@ def _draw_logo(image, y):
     image.alpha_composite(logo, ((VIDEO_WIDTH - logo.width) // 2, y))
 
 
+def _draw_quiz_header(draw, subject=None, quiz_number=None, theme=None):
+    """Draw the subject and quiz number at the very top of every slide."""
+    if subject is None or quiz_number is None:
+        return
+
+    theme = theme or DEFAULT_THEME
+    label = f"{str(subject).strip()} : {quiz_number}"
+    box = (48, 10, VIDEO_WIDTH - 48, 58)
+    draw.rounded_rectangle(
+        box,
+        radius=18,
+        fill=theme["card"] + (235,),
+        outline=theme["accent2"] + (245,),
+        width=2,
+    )
+    _draw_fit(
+        draw,
+        label,
+        (62, 14, VIDEO_WIDTH - 62, 54),
+        theme["accent2"] + (255,),
+        23,
+        15,
+        bold=True,
+        gap=1,
+        align="center",
+        force_hindi=None,
+    )
+
+
 def _draw_option(draw, y, index, en, hi, height, theme, correct=False):
     """Draw one option card with a clear gap between marker and text."""
     box = (58, y, VIDEO_WIDTH - 58, y + height)
@@ -441,10 +470,11 @@ def _option_layout(start_y, bottom_y, count=4, preferred_height=108, gap=10, min
     return start_y, height, gap
 
 
-def render_question(q, index, timer, output, subject=None):
+def render_question(q, index, timer, output, subject=None, quiz_number=None):
     theme = _theme(subject)
     image = _background(subject)
     draw = ImageDraw.Draw(image, "RGBA")
+    _draw_quiz_header(draw, subject, quiz_number, theme)
     _draw_logo(image, 70 if timer is None else 85)
 
     if timer is not None:
@@ -605,11 +635,12 @@ def _draw_explanation(draw, exp_en, exp_hi, top, bottom, theme):
         )
 
 
-def render_answer(q, index, output, subject=None):
+def render_answer(q, index, output, subject=None, quiz_number=None):
     theme = _theme(subject)
     image = _background(subject)
     draw = ImageDraw.Draw(image, "RGBA")
-    _draw_logo(image, 45)
+    _draw_quiz_header(draw, subject, quiz_number, theme)
+    _draw_logo(image, 70)
 
     en, hi = _question_parts(q)
     draw.text(
