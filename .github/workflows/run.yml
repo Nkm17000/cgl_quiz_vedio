@@ -4,626 +4,626 @@ name: Generate Quiz Videos
 
 on:
 
-  push:
+  push:
 
-    branches:
+    branches:
 
-      - main
+      - main
 
-  workflow_dispatch:
+  workflow_dispatch:
 
-  schedule:
+  schedule:
 
-    - cron: "0 0,3,6,9,12,15,18,21 * * *"
+    - cron: "17 0,3,6,9,12,15,18,21 * * *"
 
 
 
 permissions:
 
-  contents: write
+  contents: write
 
 
 
-\# Prevent two complete quiz runs from changing the same counters/releases at once.
+# Prevent two complete quiz runs from changing the same counters/releases at once.
 
 concurrency:
 
-  group: quiz-video
+  group: quiz-video
 
-  cancel-in-progress: false
+  cancel-in-progress: false
 
 
 
 env:
 
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.11"
 
-  META_GRAPH_VERSION: v24.0
+  META_GRAPH_VERSION: v24.0
 
-  TTS_VOICE: en-IN-NeerjaNeural
+  TTS_VOICE: en-IN-NeerjaNeural
 
-  TTS_RATE: +0%
+  TTS_RATE: +0%
 
-  TTS_VOLUME: +0%
+  TTS_VOLUME: +0%
 
-  PAGE_URL: ${{ secrets.PAGE_URL }}
+  PAGE_URL: ${{ secrets.PAGE_URL }}
 
-  VIDEO_WIDTH: 720
+  VIDEO_WIDTH: 720
 
-  VIDEO_HEIGHT: 1280
+  VIDEO_HEIGHT: 1280
 
-  FPS: 30
+  FPS: 30
 
-  VIDEO_CRF: 30
+  VIDEO_CRF: 30
 
-  VIDEO_PRESET: ultrafast
+  VIDEO_PRESET: ultrafast
 
-  TTS_CONCURRENCY: 12
+  TTS_CONCURRENCY: 12
 
-  VIDEO_WORKERS: 1
+  VIDEO_WORKERS: 1
 
 
 
 jobs:
 
-  # One runner generates one subject. GitHub then runs up to five subjects at once.
+  # One runner generates one subject. GitHub then runs up to five subjects at once.
 
-  generate:
+  generate:
 
-    if: ${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Update quiz source counters') }}
+    if: ${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Update quiz source counters') }}
 
-    name: Generate ${{ matrix.subject }}
+    name: Generate ${{ matrix.subject }}
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
 
-    timeout-minutes: 60
+    timeout-minutes: 60
 
-    strategy:
+    strategy:
 
-      fail-fast: false
+      fail-fast: false
 
-      max-parallel: 5
+      max-parallel: 5
 
-      matrix:
+      matrix:
 
-        include:
+        include:
 
-          - subject_index: 0
+          - subject_index: 0
 
-            subject: ENGLISH
+            subject: ENGLISH
 
-          - subject_index: 1
+          - subject_index: 1
 
-            subject: GENERAL SCIENCE
+            subject: GENERAL SCIENCE
 
-          - subject_index: 2
+          - subject_index: 2
 
-            subject: GK
+            subject: GK
 
-          - subject_index: 3
+          - subject_index: 3
 
-            subject: MATH
+            subject: MATH
 
-          - subject_index: 4
+          - subject_index: 4
 
-            subject: REASONING
+            subject: REASONING
 
-          - subject_index: 5
+          - subject_index: 5
 
-            subject: HISTORY
+            subject: HISTORY
 
-          - subject_index: 6
+          - subject_index: 6
 
-            subject: GEOGRAPHY
+            subject: GEOGRAPHY
 
-          - subject_index: 7
+          - subject_index: 7
 
-            subject: POLITY
+            subject: POLITY
 
-          - subject_index: 8
+          - subject_index: 8
 
-            subject: COMPUTER SCIENCE
+            subject: COMPUTER SCIENCE
 
-          - subject_index: 9
+          - subject_index: 9
 
-            subject: RAJASTHAN GK
+            subject: RAJASTHAN GK
 
 
 
-    steps:
+    steps:
 
-      - name: Checkout
+      - name: Checkout
 
-        uses: actions/checkout\@v4
+        uses: actions/checkout@v4
 
 
 
-      - name: Setup Python
+      - name: Setup Python
 
-        uses: actions/setup-python\@v5
+        uses: actions/setup-python@v5
 
-        with:
+        with:
 
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
 
-          cache: pip
+          cache: pip
 
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements.txt
 
 
 
-      - name: Verify or install FFmpeg
+      - name: Verify or install FFmpeg
 
-        run: |
+        run: |
 
-          set -euo pipefail
+          set -euo pipefail
 
-          if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+          if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
 
-            echo "FFmpeg already available on runner"
+            echo "FFmpeg already available on runner"
 
-          else
+          else
 
-            sudo apt-get update -qq
+            sudo apt-get update -qq
 
-            sudo apt-get install -y -qq ffmpeg
+            sudo apt-get install -y -qq ffmpeg
 
-          fi
+          fi
 
-          ffmpeg -version | head -n 1
+          ffmpeg -version | head -n 1
 
-          ffprobe -version | head -n 1
+          ffprobe -version | head -n 1
 
 
 
-      - name: Install Python dependencies
+      - name: Install Python dependencies
 
-        run: python -m pip install --disable-pip-version-check --prefer-binary -r requirements.txt
+        run: python -m pip install --disable-pip-version-check --prefer-binary -r requirements.txt
 
 
 
-      - name: Prepare folders
+      - name: Prepare folders
 
-        run: |
+        run: |
 
-          mkdir -p data/history output
+          mkdir -p data/history output
 
-          if [ ! -f data/history/history.json ]; then
+          if [ ! -f data/history/history.json ]; then
 
-            echo '{"version": 3, "counters": {}, "last_run": {}}' > data/history/history.json
+            echo '{"version": 3, "counters": {}, "last_run": {}}' > data/history/history.json
 
-          fi
+          fi
 
 
 
-      - name: Generate one subject video
+      - name: Generate one subject video
 
-        env:
+        env:
 
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
 
-          SUBJECT_INDEX: ${{ matrix.subject_index }}
+          SUBJECT_INDEX: ${{ matrix.subject_index }}
 
-          DEFER_INSTAGRAM_PUBLISH: "true"
+          DEFER_INSTAGRAM_PUBLISH: "true"
 
-        run: |
+        run: |
 
-          echo "============================================================"
+          echo "============================================================"
 
-          echo "Generating subject $SUBJECT_INDEX: ${{ matrix.subject }}"
+          echo "Generating subject $SUBJECT_INDEX: ${{ matrix.subject }}"
 
-          echo "============================================================"
+          echo "============================================================"
 
-          python app.py
+          python app.py
 
 
 
-      - name: Validate generated subject video
+      - name: Validate generated subject video
 
-        env:
+        env:
 
-          EXPECTED_SUBJECT: ${{ matrix.subject }}
+          EXPECTED_SUBJECT: ${{ matrix.subject }}
 
-        run: |
+        run: |
 
-          set -euo pipefail
+          set -euo pipefail
 
-          python - <<'PY'
+          python - <<'PY'
 
-          import json
+          import json
 
-          import os
+          import os
 
-          from pathlib import Path
+          from pathlib import Path
 
 
 
-          pending = json.loads(Path("output/pending_publish.json").read_text(encoding="utf-8"))
+          pending = json.loads(Path("output/pending_publish.json").read_text(encoding="utf-8"))
 
-          if not isinstance(pending, list) or len(pending) != 1:
+          if not isinstance(pending, list) or len(pending) != 1:
 
-              raise SystemExit(f"Expected exactly 1 pending quiz, got {len(pending) if isinstance(pending, list) else 'invalid'}")
+              raise SystemExit(f"Expected exactly 1 pending quiz, got {len(pending) if isinstance(pending, list) else 'invalid'}")
 
 
 
-          item = pending[0]
+          item = pending[0]
 
-          if item.get("subject") != os.environ["EXPECTED_SUBJECT"]:
+          if item.get("subject") != os.environ["EXPECTED_SUBJECT"]:
 
-              raise SystemExit(
+              raise SystemExit(
 
-                  f"Wrong subject: expected {os.environ['EXPECTED_SUBJECT']}, got {item.get('subject')}"
+                  f"Wrong subject: expected {os.environ['EXPECTED_SUBJECT']}, got {item.get('subject')}"
 
-              )
+              )
 
-          if int(item.get("questions", 0)) != 10:
+          if int(item.get("questions", 0)) != 10:
 
-              raise SystemExit(f"Expected 10 questions, got {item.get('questions')}")
+              raise SystemExit(f"Expected 10 questions, got {item.get('questions')}")
 
 
 
-          video = Path("output") / item["video_file"]
+          video = Path("output") / item["video_file"]
 
-          if not video.is_file() or video.stat().st_size <= 0:
+          if not video.is_file() or video.stat().st_size <= 0:
 
-              raise SystemExit(f"Missing/empty video: {video}")
+              raise SystemExit(f"Missing/empty video: {video}")
 
 
 
-          print(f"✅ {item['subject']}: {video} ({video.stat().st_size} bytes)")
+          print(f"✅ {item['subject']}: {video} ({video.stat().st_size} bytes)")
 
-          PY
+          PY
 
 
 
-      - name: Upload subject artifact
+      - name: Upload subject artifact
 
-        uses: actions/upload-artifact\@v4
+        uses: actions/upload-artifact@v4
 
-        with:
+        with:
 
-          name: quiz-video-${{ matrix.subject_index }}
+          name: quiz-video-${{ matrix.subject_index }}
 
-          path: |
+          path: |
 
-            output/\*.mp4
+            output/*.mp4
 
-            output/pending_publish.json
+            output/pending_publish.json
 
-          if-no-files-found: error
+          if-no-files-found: error
 
-          retention-days: 7
+          retention-days: 7
 
 
 
-  # Instagram remains strictly sequential. This preserves the user's one-video-at-a-time
+  # Instagram remains strictly sequential. This preserves the user's one-video-at-a-time
 
-  # requirement while the expensive generation work happens in parallel above.
+  # requirement while the expensive generation work happens in parallel above.
 
-  publish:
+  publish:
 
-    name: Publish Instagram Reels Sequentially
+    name: Publish Instagram Reels Sequentially
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
 
-    timeout-minutes: 180
+    timeout-minutes: 180
 
-    needs: generate
+    needs: generate
 
-    if: ${{ needs.generate.result == 'success' }}
+    if: ${{ needs.generate.result == 'success' }}
 
 
 
-    steps:
+    steps:
 
-      - name: Checkout
+      - name: Checkout
 
-        uses: actions/checkout\@v4
+        uses: actions/checkout@v4
 
 
 
-      - name: Setup Python
+      - name: Setup Python
 
-        uses: actions/setup-python\@v5
+        uses: actions/setup-python@v5
 
-        with:
+        with:
 
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
 
-          cache: pip
+          cache: pip
 
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements.txt
 
 
 
-      - name: Install Python dependencies
+      - name: Install Python dependencies
 
-        run: python -m pip install --disable-pip-version-check --prefer-binary -r requirements.txt
+        run: python -m pip install --disable-pip-version-check --prefer-binary -r requirements.txt
 
 
 
-      - name: Download all generated subject artifacts
+      - name: Download all generated subject artifacts
 
-        uses: actions/download-artifact\@v5
+        uses: actions/download-artifact@v5
 
-        with:
+        with:
 
-          pattern: quiz-video-\*
+          pattern: quiz-video-*
 
-          path: artifacts
+          path: artifacts
 
-          merge-multiple: false
+          merge-multiple: false
 
 
 
-      - name: Verify all 10 subject artifacts
+      - name: Verify all 10 subject artifacts
 
-        run: |
+        run: |
 
-          set -euo pipefail
+          set -euo pipefail
 
-          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
+          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
 
-            DIR="artifacts/quiz-video-${INDEX}"
+            DIR="artifacts/quiz-video-${INDEX}"
 
-            test -f "$DIR/pending_publish.json" || { echo "::error::Missing pending_publish.json for subject index $INDEX"; exit 1; }
+            test -f "$DIR/pending_publish.json" || { echo "::error::Missing pending_publish.json for subject index $INDEX"; exit 1; }
 
-            COUNT="$(find "$DIR" -maxdepth 1 -type f -name '\*.mp4' | wc -l)"
+            COUNT="$(find "$DIR" -maxdepth 1 -type f -name '*.mp4' | wc -l)"
 
-            if [ "$COUNT" -ne 1 ]; then
+            if [ "$COUNT" -ne 1 ]; then
 
-              echo "::error::Expected exactly one MP4 for subject index $INDEX; found $COUNT"
+              echo "::error::Expected exactly one MP4 for subject index $INDEX; found $COUNT"
 
-              exit 1
+              exit 1
 
-            fi
+            fi
 
-            echo "✅ Artifact ${INDEX}: $DIR"
+            echo "✅ Artifact ${INDEX}: $DIR"
 
-          done
+          done
 
 
 
-      - name: Verify Instagram secrets
+      - name: Verify Instagram secrets
 
-        env:
+        env:
 
-          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
 
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
 
-        run: |
+        run: |
 
-          set -euo pipefail
+          set -euo pipefail
 
-          if [ -z "$INSTAGRAM_BUSINESS_ACCOUNT_ID" ] || [ -z "$INSTAGRAM_ACCESS_TOKEN" ]; then
+          if [ -z "$INSTAGRAM_BUSINESS_ACCOUNT_ID" ] || [ -z "$INSTAGRAM_ACCESS_TOKEN" ]; then
 
-            echo "::error::Instagram secrets are missing."
+            echo "::error::Instagram secrets are missing."
 
-            exit 1
+            exit 1
 
-          fi
+          fi
 
 
 
-      - name: Publish all 10 videos one at a time
+      - name: Publish all 10 videos one at a time
 
-        env:
+        env:
 
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
 
-          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
 
-          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
+          INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
 
-          META_GRAPH_VERSION: v24.0
+          META_GRAPH_VERSION: v24.0
 
-        run: |
+        run: |
 
-          set -euo pipefail
+          set -euo pipefail
 
 
 
-          VISIBILITY="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.visibility')"
+          VISIBILITY="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.visibility')"
 
-          if [ "$VISIBILITY" != "public" ]; then
+          if [ "$VISIBILITY" != "public" ]; then
 
-            echo "::error::Instagram automatic publishing requires this GitHub repository to be public."
+            echo "::error::Instagram automatic publishing requires this GitHub repository to be public."
 
-            exit 1
+            exit 1
 
-          fi
+          fi
 
 
 
-          mkdir -p output
+          mkdir -p output
 
 
 
-          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
+          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
 
-            DIR="artifacts/quiz-video-${INDEX}"
+            DIR="artifacts/quiz-video-${INDEX}"
 
-            TAG="quiz-reel-${GITHUB_RUN_ID}-${INDEX}"
+            TAG="quiz-reel-${GITHUB_RUN_ID}-${INDEX}"
 
 
 
-            VIDEO_FILE="$(python - "$DIR/pending_publish.json" <<'PY'
+            VIDEO_FILE="$(python - "$DIR/pending_publish.json" <<'PY'
 
-          import json
+          import json
 
-          import sys
+          import sys
 
-          from pathlib import Path
+          from pathlib import Path
 
-          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 
-          if not isinstance(data, list) or len(data) != 1:
+          if not isinstance(data, list) or len(data) != 1:
 
-              raise SystemExit("Expected one pending publish record")
+              raise SystemExit("Expected one pending publish record")
 
-          print(data[0]["video_file"])
+          print(data[0]["video_file"])
 
-          PY
+          PY
 
-            )"
+            )"
 
 
 
-            SUBJECT="$(python - "$DIR/pending_publish.json" <<'PY'
+            SUBJECT="$(python - "$DIR/pending_publish.json" <<'PY'
 
-          import json
+          import json
 
-          import sys
+          import sys
 
-          from pathlib import Path
+          from pathlib import Path
 
-          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 
-          print(data[0]["subject"])
+          print(data[0]["subject"])
 
-          PY
+          PY
 
-            )"
+            )"
 
 
 
-            cp "$DIR/$VIDEO_FILE" "output/$VIDEO_FILE"
+            cp "$DIR/$VIDEO_FILE" "output/$VIDEO_FILE"
 
-            cp "$DIR/pending_publish.json" "output/pending_publish.json"
+            cp "$DIR/pending_publish.json" "output/pending_publish.json"
 
 
 
-            echo "============================================================"
+            echo "============================================================"
 
-            echo "📤 Publishing ${INDEX}/10: ${SUBJECT}"
+            echo "📤 Publishing ${INDEX}/10: ${SUBJECT}"
 
-            echo "📁 ${VIDEO_FILE}"
+            echo "📁 ${VIDEO_FILE}"
 
-            echo "🏷️ ${TAG}"
+            echo "🏷️ ${TAG}"
 
-            echo "============================================================"
+            echo "============================================================"
 
 
 
-            gh release create "$TAG" \\
+            gh release create "$TAG" \\
 
-              "$DIR/$VIDEO_FILE" \\
+              "$DIR/$VIDEO_FILE" \\
 
-              --repo "$GITHUB_REPOSITORY" \\
+              --repo "$GITHUB_REPOSITORY" \\
 
-              --target "$GITHUB_SHA" \\
+              --target "$GITHUB_SHA" \\
 
-              --title "Quiz Reel ${GITHUB_RUN_NUMBER}-${INDEX}" \\
+              --title "Quiz Reel ${GITHUB_RUN_NUMBER}-${INDEX}" \\
 
-              --notes "Temporary public MP4 used for Instagram Reel publishing."
+              --notes "Temporary public MP4 used for Instagram Reel publishing."
 
 
 
-            VIDEO_URL="https\://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${VIDEO_FILE}"
+            VIDEO_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${VIDEO_FILE}"
 
-            echo "🔗 Public video URL: ${VIDEO_URL}"
+            echo "🔗 Public video URL: ${VIDEO_URL}"
 
 
 
-            AVAILABLE=0
+            AVAILABLE=0
 
-            for ATTEMPT in $(seq 1 12); do
+            for ATTEMPT in $(seq 1 12); do
 
-              HTTP_CODE="$(curl -L -s -o /dev/null -w '%{http_code}' "$VIDEO_URL" || true)"
+              HTTP_CODE="$(curl -L -s -o /dev/null -w '%{http_code}' "$VIDEO_URL" || true)"
 
-              echo "🌐 Release asset check ${ATTEMPT}/12: HTTP ${HTTP_CODE}"
+              echo "🌐 Release asset check ${ATTEMPT}/12: HTTP ${HTTP_CODE}"
 
-              if [ "$HTTP_CODE" = "200" ]; then
+              if [ "$HTTP_CODE" = "200" ]; then
 
-                AVAILABLE=1
+                AVAILABLE=1
 
-                break
+                break
 
-              fi
+              fi
 
-              sleep 5
+              sleep 5
 
-            done
+            done
 
 
 
-            if [ "$AVAILABLE" -ne 1 ]; then
+            if [ "$AVAILABLE" -ne 1 ]; then
 
-              echo "::error::GitHub release asset is not publicly downloadable: ${VIDEO_URL}"
+              echo "::error::GitHub release asset is not publicly downloadable: ${VIDEO_URL}"
 
-              exit 1
+              exit 1
 
-            fi
+            fi
 
 
 
-            INSTAGRAM_VIDEO_URL="$VIDEO_URL" \\
+            INSTAGRAM_VIDEO_URL="$VIDEO_URL" \\
 
-            PENDING_INDEX="0" \\
+            PENDING_INDEX="0" \\
 
-            python publish.py
+            python publish.py
 
 
 
-            echo "🧹 Cleaning temporary release ${TAG}"
+            echo "🧹 Cleaning temporary release ${TAG}"
 
-            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
 
-          done
+          done
 
 
 
-          echo "✅ All 10 subject videos published successfully, one at a time."
+          echo "✅ All 10 subject videos published successfully, one at a time."
 
 
 
-      - name: Commit quiz counters and publish history
+      - name: Commit quiz counters and publish history
 
-        if: success()
+        if: success()
 
-        run: |
+        run: |
 
-          set -euo pipefail
+          set -euo pipefail
 
-          git config user.name "github-actions"
+          git config user.name "github-actions"
 
-          git config user.email "actions\@github.com"
+          git config user.email "actions@github.com"
 
-          git add data/history/history.json
+          git add data/history/history.json
 
-          if git diff --cached --quiet; then
+          if git diff --cached --quiet; then
 
-            echo "No history changes to commit."
+            echo "No history changes to commit."
 
-            exit 0
+            exit 0
 
-          fi
+          fi
 
-          git commit -m "Update quiz source counters"
+          git commit -m "Update quiz source counters"
 
-          git pull --rebase origin main
+          git pull --rebase origin main
 
-          git push origin main
+          git push origin main
 
 
 
-      - name: Cleanup temporary releases if publishing failed
+      - name: Cleanup temporary releases if publishing failed
 
-        if: ${{ failure() }}
+        if: ${{ failure() }}
 
-        env:
+        env:
 
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
 
-        run: |
+        run: |
 
-          set +e
+          set +e
 
-          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
+          for INDEX in 0 1 2 3 4 5 6 7 8 9; do
 
-            TAG="quiz-reel-${GITHUB_RUN_ID}-${INDEX}"
+            TAG="quiz-reel-${GITHUB_RUN_ID}-${INDEX}"
 
-            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag >/dev/null 2>&1 || true
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag >/dev/null 2>&1 || true
 
-          done
+          done
