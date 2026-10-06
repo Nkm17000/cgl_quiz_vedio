@@ -14,7 +14,7 @@ on:
 
   schedule:
 
-    - cron: "17 0,3,6,9,12,15,18,21 * * *"
+    - cron: "17 0,6,12,18 * * *"
 
 
 
@@ -483,7 +483,7 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          from services.quiz_service import QUIZ_SIZE, commit_quiz_counter
+          from services.quiz_service import QUIZ_SIZE
 
           root = Path.cwd()
           history_file = root / "data" / "history" / "history.json"
@@ -494,6 +494,7 @@ jobs:
               except Exception:
                   history = {}
 
+          counters = history.setdefault("counters", {})
           last_run = history.setdefault("last_run", {})
           processed = 0
 
@@ -510,8 +511,12 @@ jobs:
                       f"got {pending.get('questions')}"
                   )
 
-              new_counter = commit_quiz_counter(pending["source_file"], QUIZ_SIZE)
-              last_run[pending["source_file"]] = {
+              source_file = pending["source_file"]
+              current_counter = int(counters.get(source_file, 0) or 0)
+              new_counter = current_counter + QUIZ_SIZE
+              counters[source_file] = new_counter
+
+              last_run[source_file] = {
                   "subject": pending["subject"],
                   "quiz_number": pending["quiz_number"],
                   "source_counter_after": new_counter,
