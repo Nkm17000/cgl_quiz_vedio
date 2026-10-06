@@ -62,8 +62,8 @@ def _select_questions(data, job, counter):
     return batch, counter, len(pool)
 
 
-def fetch_quizzes():
-    """Return exactly ten independent 10-question subject quizzes."""
+def fetch_quizzes(subject_index=None):
+    """Return subject quizzes; when subject_index is set, return only that subject."""
     files = {p.name: p for p in Path(QUIZ_DIR).glob("*.json")}
     if not files:
         raise FileNotFoundError(f"No quiz JSON files found in {QUIZ_DIR}")
@@ -74,7 +74,14 @@ def fetch_quizzes():
         counters = {}
 
     jobs = []
-    for job in SUBJECT_JOBS:
+    selected_jobs = SUBJECT_JOBS
+    if subject_index is not None:
+        subject_index = int(subject_index)
+        if subject_index < 0 or subject_index >= len(SUBJECT_JOBS):
+            raise ValueError(f"SUBJECT_INDEX must be 0-{len(SUBJECT_JOBS)-1}; got {subject_index}")
+        selected_jobs = [SUBJECT_JOBS[subject_index]]
+
+    for job in selected_jobs:
         path = files.get(job["file"])
         if path is None:
             raise FileNotFoundError(
