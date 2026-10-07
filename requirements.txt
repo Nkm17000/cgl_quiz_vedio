@@ -1,0 +1,4 @@
+Pillow
+edge-tts
+requests
+python-dotenv
