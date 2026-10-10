@@ -129,7 +129,7 @@ def _logo():
 
     source = Image.open(ASSETS_DIR / "logo.png").convert("RGBA")
     # Crop the original white margin before fitting the mark into a circle.
-    source = source.crop((90, 25, 380, 315))
+    source = source.crop((250, 80, 780, 700))
     source.thumbnail((204, 204), Image.Resampling.LANCZOS)
 
     size = 230
@@ -683,7 +683,7 @@ def _draw_finger_icon(draw, x, y, scale=1.0, fill=(255, 224, 189, 255), outline=
 
 def render_cta(subject=None, quiz_number=None, output=None):
     """Render the final Like/Subscribe/website call-to-action slide."""
-    from config import PAGE_URL
+    from config import PAGE_URL, app_name
 
     theme = _theme(subject)
     image = _background(subject)
@@ -727,7 +727,7 @@ def render_cta(subject=None, quiz_number=None, output=None):
 
     _draw_fit(
         draw,
-        "Visit Smart Learning Lab",
+        f"Visit {app_name}",
         (70, 600, VIDEO_WIDTH - 70, 675),
         theme["muted"] + (255,),
         31,
@@ -767,7 +767,7 @@ def render_cta(subject=None, quiz_number=None, output=None):
 
     _draw_fit(
         draw,
-        "SMART LEARNING LAB",
+        app_name.upper(),
         (80, 1130, VIDEO_WIDTH - 80, 1200),
         theme["footer"] + (255,),
         26,

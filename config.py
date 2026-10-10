@@ -6,6 +6,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# Centralized public branding and social links. Change these values here or
+# override them through environment variables without editing publishing code.
+app_name = os.getenv("APP_NAME", "Smart Learning Lab 247").strip() or "Smart Learning Lab 247"
+INSTAGRAM_PAGE_URL = os.getenv(
+    "INSTAGRAM_PAGE_URL", "https://www.instagram.com/smartlearninglab247"
+).strip()
+FACEBOOK_PAGE_URL = os.getenv(
+    "FACEBOOK_PAGE_URL", "https://www.facebook.com/smartlearninglab247"
+).strip()
+EDUAPPNAME = os.getenv(
+    "EDUAPPNAME", "https://smartlearninglab-react.pages.dev/"
+).strip()
 ASSETS_DIR = BASE_DIR / "assets"
 QUIZ_DIR = Path(os.getenv("QUIZ_DIR", ASSETS_DIR / "quiz_data")).expanduser()
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", BASE_DIR / "output")).expanduser()
@@ -35,7 +48,9 @@ TICK_AUDIO = ASSETS_DIR / "tick.mp3"
 CORRECT_AUDIO = ASSETS_DIR / "correct.mp3"
 LOGO_FILE = ASSETS_DIR / "logo.png"
 
-PAGE_URL = os.getenv("PAGE_URL", "https://smartlearninglab-react.pages.dev").strip()
+# PAGE_URL is retained as a backward-compatible alias for existing workflow
+# secrets and code; EDUAPPNAME is the canonical education-app URL setting.
+PAGE_URL = os.getenv("PAGE_URL", EDUAPPNAME).strip()
 META_GRAPH_VERSION = os.getenv("META_GRAPH_VERSION", "v23.0").strip()
 INSTAGRAM_BUSINESS_ACCOUNT_ID = (os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID") or "").strip()
 INSTAGRAM_ACCESS_TOKEN = (os.getenv("INSTAGRAM_ACCESS_TOKEN") or "").strip()
