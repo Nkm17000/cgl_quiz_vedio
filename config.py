@@ -11,7 +11,14 @@ BASE_DIR = Path(__file__).resolve().parent
 # override them through environment variables without editing publishing code.
 app_name = os.getenv("APP_NAME", "Smart Learning Lab 247").strip() or "Smart Learning Lab 247"
 INSTAGRAM_PAGE_URL = os.getenv(
-    "INSTAGRAM_PAGE_URL", "https://www.instagram.com/smartlearninglab247"
+    "INSTAGRAM_PAGE_URL", "https://www.instagram.com/cgl_ssc_railway_rpsc_bank"
+).strip()
+INSTAGRAM_HANDLE = os.getenv("INSTAGRAM_HANDLE", "@cgl_ssc_railway_rpsc_bank").strip()
+INSTAGRAM_SECONDARY_PAGE_URL = os.getenv(
+    "INSTAGRAM_SECONDARY_PAGE_URL", "https://www.instagram.com/smartlearninglab247"
+).strip()
+INSTAGRAM_SECONDARY_HANDLE = os.getenv(
+    "INSTAGRAM_SECONDARY_HANDLE", "@smartlearninglab247"
 ).strip()
 FACEBOOK_PAGE_URL = os.getenv(
     "FACEBOOK_PAGE_URL", "https://www.facebook.com/smartlearninglab247"

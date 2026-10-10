@@ -127,9 +127,9 @@ def _logo():
     if _LOGO is not None:
         return _LOGO
 
+    # This asset is a complete circular brand badge. Keep the whole image so
+    # both the emblem and the "SMART LEARNING LAB 247" name remain visible.
     source = Image.open(ASSETS_DIR / "logo.png").convert("RGBA")
-    # Crop the original white margin before fitting the mark into a circle.
-    source = source.crop((250, 80, 780, 700))
     source.thumbnail((204, 204), Image.Resampling.LANCZOS)
 
     size = 230
@@ -146,9 +146,6 @@ def _logo():
 
     x = (size - source.width) // 2
     y = (size - source.height) // 2
-    source_mask = Image.new("L", source.size, 0)
-    ImageDraw.Draw(source_mask).ellipse((0, 0, source.width - 1, source.height - 1), fill=255)
-    source.putalpha(source_mask)
     badge.alpha_composite(source, (x, y))
     _LOGO = badge
     return _LOGO

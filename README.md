@@ -52,7 +52,11 @@ Required:
 
 Optional:
 
-- `APP_NAME` (centralized display name; default: `Smart Learning Lab 247`)\n- `INSTAGRAM_PAGE_URL`\n- `FACEBOOK_PAGE_URL`\n- `EDUAPPNAME` (education app URL)\n- `PAGE_URL` (backward-compatible override for the education app URL)
+- `APP_NAME` (centralized display name; default: `Smart Learning Lab 247`)- `INSTAGRAM_PAGE_URL` and `INSTAGRAM_HANDLE` (CGL/SSC page)
+- `INSTAGRAM_SECONDARY_PAGE_URL` and `INSTAGRAM_SECONDARY_HANDLE` (Smart Learning Lab 247 page; included in captions)
+- `FACEBOOK_PAGE_URL`
+- `EDUAPPNAME` (education app URL)
+- `PAGE_URL` (backward-compatible override for the education app URL)
 
 The repository must be **public** because Instagram needs to download the MP4 from the public GitHub Release URL.
 
