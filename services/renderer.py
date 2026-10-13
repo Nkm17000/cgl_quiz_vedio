@@ -127,9 +127,9 @@ def _logo():
     if _LOGO is not None:
         return _LOGO
 
-    # This asset is a complete circular brand badge. Keep the whole image so
-    # both the emblem and the "SMART LEARNING LAB 247" name remain visible.
     source = Image.open(ASSETS_DIR / "logo.png").convert("RGBA")
+    # Crop the original white margin before fitting the mark into a circle.
+    source = source.crop((90, 25, 380, 315))
     source.thumbnail((204, 204), Image.Resampling.LANCZOS)
 
     size = 230
@@ -146,6 +146,9 @@ def _logo():
 
     x = (size - source.width) // 2
     y = (size - source.height) // 2
+    source_mask = Image.new("L", source.size, 0)
+    ImageDraw.Draw(source_mask).ellipse((0, 0, source.width - 1, source.height - 1), fill=255)
+    source.putalpha(source_mask)
     badge.alpha_composite(source, (x, y))
     _LOGO = badge
     return _LOGO
@@ -680,7 +683,7 @@ def _draw_finger_icon(draw, x, y, scale=1.0, fill=(255, 224, 189, 255), outline=
 
 def render_cta(subject=None, quiz_number=None, output=None):
     """Render the final Like/Subscribe/website call-to-action slide."""
-    from config import PAGE_URL, app_name
+    from config import PAGE_URL
 
     theme = _theme(subject)
     image = _background(subject)
@@ -724,7 +727,7 @@ def render_cta(subject=None, quiz_number=None, output=None):
 
     _draw_fit(
         draw,
-        f"Visit {app_name}",
+        "Visit Smart Learning Lab",
         (70, 600, VIDEO_WIDTH - 70, 675),
         theme["muted"] + (255,),
         31,
@@ -764,7 +767,7 @@ def render_cta(subject=None, quiz_number=None, output=None):
 
     _draw_fit(
         draw,
-        app_name.upper(),
+        "SMART LEARNING LAB",
         (80, 1130, VIDEO_WIDTH - 80, 1200),
         theme["footer"] + (255,),
         26,
